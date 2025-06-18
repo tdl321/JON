@@ -960,39 +960,39 @@ if barstate.islast
 
 // Phase 6 status reporting - FINAL COMPLETION
 if barstate.islast
-    statusMsg = "🎉 JON Strategy - Phase 6 Complete - FULLY OPERATIONAL 🎉"
+    statusMsg = "JON Strategy - Phase 6 Complete - FULLY OPERATIONAL"
     statusMsg := statusMsg + "\n=== PHASE 1 FOUNDATION ==="
-    statusMsg := statusMsg + "\n• Task 1.1: Project Setup [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 1.2: Input Parameters [COMPLETE] ✅" 
-    statusMsg := statusMsg + "\n• Task 1.3: Core Indicators [COMPLETE] ✅"
+    statusMsg := statusMsg + "\n• Task 1.1: Project Setup [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 1.2: Input Parameters [COMPLETE]" 
+    statusMsg := statusMsg + "\n• Task 1.3: Core Indicators [COMPLETE]"
     statusMsg := statusMsg + "\n=== PHASE 2 CORE LOGIC ==="
-    statusMsg := statusMsg + "\n• Task 2.1: Trend Filter System [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 2.2: Signal Detection Engine [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 2.3: Entry Framework [COMPLETE] ✅"
+    statusMsg := statusMsg + "\n• Task 2.1: Trend Filter System [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 2.2: Signal Detection Engine [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 2.3: Entry Framework [COMPLETE]"
     statusMsg := statusMsg + "\n=== PHASE 3 RISK MANAGEMENT ==="
-    statusMsg := statusMsg + "\n• Task 3.1: Position Sizing [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 3.2: Stop Loss System [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 3.3: Risk Validation [COMPLETE] ✅"
+    statusMsg := statusMsg + "\n• Task 3.1: Position Sizing [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 3.2: Stop Loss System [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 3.3: Risk Validation [COMPLETE]"
     statusMsg := statusMsg + "\n=== PHASE 4 EXIT STRATEGY ==="
-    statusMsg := statusMsg + "\n• Task 4.1: ATR Trailing Exit [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 4.2: Aggressive Profit Take [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 4.3: Exit Selection [COMPLETE] ✅"
+    statusMsg := statusMsg + "\n• Task 4.1: ATR Trailing Exit [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 4.2: Aggressive Profit Take [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 4.3: Exit Selection [COMPLETE]"
     statusMsg := statusMsg + "\n=== PHASE 5 ENTRY LOGIC INTEGRATION ==="
-    statusMsg := statusMsg + "\n• Task 5.1: Breakout Entry Execution [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 5.2: Dip Buy Entry Execution [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 5.3: Opportunistic Exit Logic [COMPLETE] ✅"
+    statusMsg := statusMsg + "\n• Task 5.1: Breakout Entry Execution [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 5.2: Dip Buy Entry Execution [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 5.3: Opportunistic Exit Logic [COMPLETE]"
     statusMsg := statusMsg + "\n=== PHASE 6 INTERFACE & VALIDATION ==="
-    statusMsg := statusMsg + "\n• Task 6.1: Visual Interface (UI-1) [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 6.2: Strategy Tester (UI-2) [COMPLETE] ✅"
-    statusMsg := statusMsg + "\n• Task 6.3: Multi-Asset Validation (B-1) [COMPLETE] ✅"
+    statusMsg := statusMsg + "\n• Task 6.1: Visual Interface (UI-1) [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 6.2: Strategy Tester (UI-2) [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 6.3: Multi-Asset Validation (B-1) [COMPLETE]"
     statusMsg := statusMsg + "\n=== STRATEGY STATUS ==="
-    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendFilterPassed ? "BULL ✅" : "BEAR ⏸️")
+    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendFilterPassed ? "BULL MARKET" : "BEAR MARKET")
     statusMsg := statusMsg + "\n• ATR: " + str.tostring(atr, "#.####")
-    statusMsg := statusMsg + "\n• Data Valid: " + (areIndicatorsValid ? "PASS ✅" : "FAIL ❌")
-    statusMsg := statusMsg + "\n• Risk Valid: " + (canEnterNewPosition() ? "PASS ✅" : "FAIL ❌")
-    statusMsg := statusMsg + "\n• Breakout Signal: " + (breakoutEntryCondition ? "ACTIVE 🚀" : "WAITING ⏱️")
-    statusMsg := statusMsg + "\n• Dip Buy Signal: " + (dipBuyEntryCondition ? "ACTIVE 🛒" : "WAITING ⏱️")
-    statusMsg := statusMsg + "\n• Exit Condition: " + (exitCondition ? "TRUE 🔚" : "FALSE ➡️")
+    statusMsg := statusMsg + "\n• Data Valid: " + (areIndicatorsValid ? "PASS" : "FAIL")
+    statusMsg := statusMsg + "\n• Risk Valid: " + (canEnterNewPosition() ? "PASS" : "FAIL")
+    statusMsg := statusMsg + "\n• Breakout Signal: " + (breakoutEntryCondition ? "ACTIVE" : "WAITING")
+    statusMsg := statusMsg + "\n• Dip Buy Signal: " + (dipBuyEntryCondition ? "ACTIVE" : "WAITING")
+    statusMsg := statusMsg + "\n• Exit Condition: " + (exitCondition ? "TRUE" : "FALSE")
     statusMsg := statusMsg + "\n• Exit Reason: " + exitReason
     statusMsg := statusMsg + "\n• Current Position: " + str.tostring(strategy.position_size)
     statusMsg := statusMsg + "\n• Last Entry Type: " + executedEntryType
@@ -1003,5 +1003,5 @@ if barstate.islast
     statusMsg := statusMsg + "\n• Test on XAUUSD with ATR Trail exit mode"
     statusMsg := statusMsg + "\n• Validate performance during historical crashes"
     statusMsg := statusMsg + "\n• Ensure <1 trade per month frequency (low-frequency investing)"
-    statusMsg := statusMsg + "\n🎯 READY FOR LIVE TRADING - ALL PRD REQUIREMENTS IMPLEMENTED"
+    statusMsg := statusMsg + "\nSTATUS: READY FOR LIVE TRADING - ALL PRD REQUIREMENTS IMPLEMENTED"
     log.info(statusMsg) 
