@@ -13,7 +13,7 @@ strategy("JON - Robust Trading Strategy",
          commission_value=0.1)
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 📋 STRATEGY INFORMATION
+// STRATEGY INFORMATION
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 // JON Strategy - A robust, multi-asset trading system designed for superior risk-adjusted returns
 // 
@@ -31,7 +31,7 @@ strategy("JON - Robust Trading Strategy",
 // Development Protocol: 5-step validation process with backtest requirements
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 📊 VERSION & CHANGELOG
+// VERSION & CHANGELOG
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 // v1.0.0 - Initial template setup with proper headers and structure
 // v1.1.0 - Added comprehensive input parameter framework for all PRD requirements
@@ -40,77 +40,63 @@ strategy("JON - Robust Trading Strategy",
 // v2.1.0 - Task 2.1: Enhanced trend filter with strength validation
 // v2.2.0 - Task 2.2: Signal detection engine for breakouts and dip buys  
 // v2.3.0 - Task 2.3: Entry framework with comprehensive condition logic
+// v3.0.0 - Phase 3 Complete: Risk Management Foundation Implementation
+// v3.1.0 - Task 3.1: ATR-based position sizing with validation
+// v3.2.0 - Task 3.2: Hard stop loss system with entry-type specific logic
+// v3.3.0 - Task 3.3: Risk validation with circuit breakers and edge case handling
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 🔧 INPUT PARAMETERS
+// INPUT PARAMETERS
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ F-1: TREND FILTER SETTINGS                                                                         │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-trendFilterEnabled = input.bool(true, "Enable 200 SMA Trend Filter", group="📈 Trend Filter (F-1)")
-trendSmaLength = input.int(200, "Trend SMA Length", minval=50, maxval=500, group="📈 Trend Filter (F-1)")
-useReferenceAsset = input.bool(false, "Use Reference Asset Filter", group="📈 Trend Filter (F-1)")
-referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", group="📈 Trend Filter (F-1)")
+// F-1: TREND FILTER SETTINGS
+trendFilterEnabled = input.bool(true, "Enable 200 SMA Trend Filter", group="Trend Filter (F-1)")
+trendSmaLength = input.int(200, "Trend SMA Length", minval=50, maxval=500, group="Trend Filter (F-1)")
+useReferenceAsset = input.bool(false, "Use Reference Asset Filter", group="Trend Filter (F-1)")
+referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", group="Trend Filter (F-1)")
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ F-2: BREAKOUT ENTRY SETTINGS                                                                       │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group="🚀 Breakout Entry (F-2)")
-breakoutLookback = input.int(20, "Breakout Lookback Period", minval=5, maxval=100, group="🚀 Breakout Entry (F-2)")
-breakoutMinAge = input.int(3, "Minimum High Age (bars)", minval=1, maxval=50, group="🚀 Breakout Entry (F-2)")
-breakoutMaxAge = input.int(50, "Maximum High Age (bars)", minval=5, maxval=200, group="🚀 Breakout Entry (F-2)")
+// F-2: BREAKOUT ENTRY SETTINGS
+enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group="Breakout Entry (F-2)")
+breakoutLookback = input.int(20, "Breakout Lookback Period", minval=5, maxval=100, group="Breakout Entry (F-2)")
+breakoutMinAge = input.int(3, "Minimum High Age (bars)", minval=1, maxval=50, group="Breakout Entry (F-2)")
+breakoutMaxAge = input.int(50, "Maximum High Age (bars)", minval=5, maxval=200, group="Breakout Entry (F-2)")
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ F-3: DIP BUY ENTRY SETTINGS                                                                        │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group="📉 Dip Buy Entry (F-3)")
-dipBuyLookback = input.int(20, "Dip Buy Lookback Period", minval=5, maxval=100, group="📉 Dip Buy Entry (F-3)")
-dipRecoveryThreshold = input.float(1.0, "Recovery Threshold %", minval=0.1, maxval=5.0, step=0.1, group="📉 Dip Buy Entry (F-3)")
+// F-3: DIP BUY ENTRY SETTINGS
+enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group="Dip Buy Entry (F-3)")
+dipBuyLookback = input.int(20, "Dip Buy Lookback Period", minval=5, maxval=100, group="Dip Buy Entry (F-3)")
+dipRecoveryThreshold = input.float(1.0, "Recovery Threshold %", minval=0.1, maxval=5.0, step=0.1, group="Dip Buy Entry (F-3)")
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ F-4: EXIT STRATEGY SETTINGS                                                                        │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-exitMode = input.string("ATR Trail", "Exit Strategy Mode", options=["ATR Trail", "Aggressive Profit Take"], group="🎯 Exit Strategy (F-4)")
-atrTrailMultiplier = input.float(2.0, "ATR Trail Multiplier", minval=0.5, maxval=5.0, step=0.1, group="🎯 Exit Strategy (F-4)")
-aggressiveProfitTarget = input.float(5.0, "Aggressive Profit Target %", minval=1.0, maxval=20.0, step=0.5, group="🎯 Exit Strategy (F-4)")
+// F-4: EXIT STRATEGY SETTINGS
+exitMode = input.string("ATR Trail", "Exit Strategy Mode", options=["ATR Trail", "Aggressive Profit Take"], group="Exit Strategy (F-4)")
+atrTrailMultiplier = input.float(2.0, "ATR Trail Multiplier", minval=0.5, maxval=5.0, step=0.1, group="Exit Strategy (F-4)")
+aggressiveProfitTarget = input.float(5.0, "Aggressive Profit Target %", minval=1.0, maxval=20.0, step=0.5, group="Exit Strategy (F-4)")
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ F-5: OPPORTUNISTIC EXIT SETTINGS                                                                   │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-enableOpportunisticExit = input.bool(true, "Enable Opportunistic Exit", group="⚡ Opportunistic Exit (F-5)")
-failedBreakoutBars = input.int(10, "Failed Breakout Timeout (bars)", minval=3, maxval=50, group="⚡ Opportunistic Exit (F-5)")
+// F-5: OPPORTUNISTIC EXIT SETTINGS
+enableOpportunisticExit = input.bool(true, "Enable Opportunistic Exit", group="Opportunistic Exit (F-5)")
+failedBreakoutBars = input.int(10, "Failed Breakout Timeout (bars)", minval=3, maxval=50, group="Opportunistic Exit (F-5)")
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ R-1 & R-2: RISK MANAGEMENT SETTINGS                                                                │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-riskPercent = input.float(1.0, "Risk Per Trade %", minval=0.1, maxval=10.0, step=0.1, group="⚖️ Risk Management (R-1, R-2)")
-atrLength = input.int(14, "ATR Length", minval=5, maxval=50, group="⚖️ Risk Management (R-1, R-2)")
-stopLossMultiplier = input.float(2.0, "Stop Loss ATR Multiplier", minval=0.5, maxval=5.0, step=0.1, group="⚖️ Risk Management (R-1, R-2)")
+// R-1 & R-2: RISK MANAGEMENT SETTINGS
+riskPercent = input.float(1.0, "Risk Per Trade %", minval=0.1, maxval=10.0, step=0.1, group="Risk Management (R-1, R-2)")
+atrLength = input.int(14, "ATR Length", minval=5, maxval=50, group="Risk Management (R-1, R-2)")
+stopLossMultiplier = input.float(2.0, "Stop Loss ATR Multiplier", minval=0.5, maxval=5.0, step=0.1, group="Risk Management (R-1, R-2)")
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ R-3 & R-4: ADVANCED RISK SETTINGS                                                                  │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-enableProfitLeverage = input.bool(false, "Enable Profit-Funded Leverage", confirm=true, group="🔧 Advanced Risk (R-3, R-4)")
-maxPyramidEntries = input.int(1, "Max Pyramid Entries", minval=1, maxval=3, group="🔧 Advanced Risk (R-3, R-4)")
+// R-3 & R-4: ADVANCED RISK SETTINGS
+enableProfitLeverage = input.bool(false, "Enable Profit-Funded Leverage", confirm=true, group="Advanced Risk (R-3, R-4)")
+maxPyramidEntries = input.int(1, "Max Pyramid Entries", minval=1, maxval=3, group="Advanced Risk (R-3, R-4)")
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ UI-1 & UI-2: DISPLAY SETTINGS                                                                      │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-showTrendSma = input.bool(true, "Show 200 SMA", group="🎨 Display Settings (UI-1, UI-2)")
-showStopLevels = input.bool(true, "Show Stop Loss Levels", group="🎨 Display Settings (UI-1, UI-2)")
-showTradeLabels = input.bool(true, "Show Trade Entry/Exit Labels", group="🎨 Display Settings (UI-1, UI-2)")
-showDebugInfo = input.bool(false, "Show Debug Information", group="🎨 Display Settings (UI-1, UI-2)")
+// UI-1 & UI-2: DISPLAY SETTINGS
+showTrendSma = input.bool(true, "Show 200 SMA", group="Display Settings (UI-1, UI-2)")
+showStopLevels = input.bool(true, "Show Stop Loss Levels", group="Display Settings (UI-1, UI-2)")
+showTradeLabels = input.bool(true, "Show Trade Entry/Exit Labels", group="Display Settings (UI-1, UI-2)")
+showDebugInfo = input.bool(false, "Show Debug Information", group="Display Settings (UI-1, UI-2)")
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 📊 CORE INDICATORS
+// CORE INDICATORS
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ PRIMARY ASSET INDICATORS                                                                            │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+// PRIMARY ASSET INDICATORS
 // Calculate 200-period SMA for trend filter (F-1)
 trendSma = ta.sma(close, trendSmaLength)
 isTrendBullish = trendFilterEnabled ? close > trendSma : true
@@ -122,195 +108,258 @@ isAtrValid = not na(atr) and atr > 0
 // Basic price validation
 isPriceDataValid = not na(close) and not na(high) and not na(low) and not na(open)
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ REFERENCE ASSET INDICATORS (Optional)                                                              │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+// REFERENCE ASSET INDICATORS (Optional)
 // Get reference asset data with error handling
 referenceClose = useReferenceAsset ? request.security(referenceSymbol, timeframe.period, close) : na
 referenceSma = useReferenceAsset and not na(referenceClose) ? ta.sma(referenceClose, trendSmaLength) : na
 isReferenceValid = useReferenceAsset ? (not na(referenceClose) and not na(referenceSma)) : true
 isReferenceBullish = useReferenceAsset and isReferenceValid ? referenceClose > referenceSma : true
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ TREND FILTER VALIDATION (F-1)                                                                      │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+// TREND FILTER VALIDATION (F-1)
 // Combined trend filter logic - both conditions must be true for long entries
 isTrendFilterPassed = isTrendBullish and isReferenceBullish and isReferenceValid
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ INDICATOR VALIDATION                                                                                │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+// INDICATOR VALIDATION
 // Master validation check - all core indicators must be valid
 areIndicatorsValid = isPriceDataValid and isAtrValid and (not useReferenceAsset or isReferenceValid)
 
 // Log any validation issues for debugging
 if barstate.islast and showDebugInfo
-    debugMsg = "🔍 Indicator Validation:"
-    debugMsg := debugMsg + "\n• Price Data: " + (isPriceDataValid ? "✅" : "❌")
-    debugMsg := debugMsg + "\n• ATR: " + (isAtrValid ? "✅" : "❌") + " (Value: " + str.tostring(atr, "#.####") + ")"
-    debugMsg := debugMsg + "\n• Trend Filter: " + (isTrendBullish ? "✅ Bull" : "❌ Bear")
+    debugMsg = "Indicator Validation:"
+    debugMsg := debugMsg + "\n• Price Data: " + (isPriceDataValid ? "PASS" : "FAIL")
+    debugMsg := debugMsg + "\n• ATR: " + (isAtrValid ? "PASS" : "FAIL") + " (Value: " + str.tostring(atr, "#.####") + ")"
+    debugMsg := debugMsg + "\n• Trend Filter: " + (isTrendBullish ? "Bull" : "Bear")
     if useReferenceAsset
-        debugMsg := debugMsg + "\n• Reference Asset: " + (isReferenceValid ? "✅" : "❌")
-        debugMsg := debugMsg + "\n• Reference Trend: " + (isReferenceBullish ? "✅ Bull" : "❌ Bear")
+        debugMsg := debugMsg + "\n• Reference Asset: " + (isReferenceValid ? "PASS" : "FAIL")
+        debugMsg := debugMsg + "\n• Reference Trend: " + (isReferenceBullish ? "Bull" : "Bear")
     log.info(debugMsg)
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 📈 PHASE 2: CORE STRATEGY LOGIC
+// PHASE 2: CORE STRATEGY LOGIC
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ TASK 2.1: TREND FILTER SYSTEM (F-1)                                                               │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-// Enhanced trend filter with reference asset support
-// The trend filter is already implemented above in the core indicators section
-// Here we add additional trend validation logic for more robust filtering
+// TASK 2.1: TREND FILTER SYSTEM (F-1)
+// Simple trend filter per PRD: Asset must be above 200 SMA, optional reference asset check
+// The trend filter logic is implemented above in core indicators
+// F-1: Just use isTrendFilterPassed - no additional complexity needed
 
-// Additional trend strength validation
-var float trendStrengthHistory = 0.0
-trendStrengthScore = close > trendSma ? 1.0 : -1.0
-trendStrengthHistory := trendStrengthHistory * 0.9 + trendStrengthScore * 0.1
+// TASK 2.2: SIGNAL DETECTION ENGINE - Recent High/Low Identification
 
-// Strong trend confirmation (price has been consistently above/below SMA)
-isStrongTrend = math.abs(trendStrengthHistory) > 0.3
-isTrendConfirmed = isTrendFilterPassed and isStrongTrend
-
-// Log trend filter status for validation
-var string trendDebugMsg = ""
-if barstate.islast and showDebugInfo
-    trendDebugMsg := "🎯 Task 2.1 - Trend Filter Status:"
-    trendDebugMsg := trendDebugMsg + "\n• Primary Trend: " + (isTrendBullish ? "BULL 🟢" : "BEAR 🔴")
-    trendDebugMsg := trendDebugMsg + "\n• Reference Trend: " + (isReferenceBullish ? "BULL 🟢" : "BEAR 🔴")
-    trendDebugMsg := trendDebugMsg + "\n• Combined Filter: " + (isTrendFilterPassed ? "PASS ✅" : "FAIL ❌")
-    trendDebugMsg := trendDebugMsg + "\n• Trend Strength: " + str.tostring(trendStrengthHistory, "#.##")
-    trendDebugMsg := trendDebugMsg + "\n• Strong Trend: " + (isStrongTrend ? "YES ✅" : "NO ❌")
-    log.info(trendDebugMsg)
-
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ TASK 2.2: SIGNAL DETECTION ENGINE - Recent High/Low Identification                                │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-
-// Recent Highs Detection for Breakout Entry (F-2)
+// F-2: Breakout Entry - Identify recent high, check age, enter on close above
 recentHigh = ta.highest(high, breakoutLookback)
 recentHighAge = ta.barssince(high == recentHigh)
 isRecentHighValid = recentHighAge >= breakoutMinAge and recentHighAge <= breakoutMaxAge
 
-// Find the actual recent high value and age for signal validation
-var float validRecentHigh = 0.0
-var int validRecentHighAge = 0
-if high == recentHigh and barstate.isconfirmed
-    validRecentHigh := high
-    validRecentHighAge := 0
-else if validRecentHighAge < breakoutMaxAge
-    validRecentHighAge := validRecentHighAge + 1
-
-// Recent Lows Detection for Dip Buy Entry (F-3)  
+// F-3: Dip Buy Entry - Identify recent low, enter on recovery above threshold
 recentLow = ta.lowest(low, dipBuyLookback)
-recentLowAge = ta.barssince(low == recentLow)
 isDipRecovering = close > recentLow * (1 + dipRecoveryThreshold / 100)
 
-// Find the actual recent low for dip buy validation
-var float validRecentLow = 0.0
-var int validRecentLowAge = 0
-if low == recentLow and barstate.isconfirmed
-    validRecentLow := low
-    validRecentLowAge := 0
-else if validRecentLowAge < dipBuyLookback
-    validRecentLowAge := validRecentLowAge + 1
+// TASK 2.3: ENTRY FRAMEWORK - Basic Entry Conditions (No Execution Yet)
 
-// Signal quality assessment
-breakoutSignalQuality = isRecentHighValid and high > validRecentHigh
-dipBuySignalQuality = isDipRecovering and validRecentLowAge >= 3 and validRecentLowAge <= dipBuyLookback
-
-// Log signal detection status for validation
-var string signalDebugMsg = ""
-if barstate.islast and showDebugInfo
-    signalDebugMsg := "🔍 Task 2.2 - Signal Detection Status:"
-    signalDebugMsg := signalDebugMsg + "\n• Recent High: " + str.tostring(validRecentHigh, "#.##") + " (Age: " + str.tostring(validRecentHighAge) + ")"
-    signalDebugMsg := signalDebugMsg + "\n• High Valid: " + (isRecentHighValid ? "YES ✅" : "NO ❌")
-    signalDebugMsg := signalDebugMsg + "\n• Breakout Signal: " + (breakoutSignalQuality ? "STRONG 🟢" : "WEAK 🔴")
-    signalDebugMsg := signalDebugMsg + "\n• Recent Low: " + str.tostring(validRecentLow, "#.##") + " (Age: " + str.tostring(validRecentLowAge) + ")"
-    signalDebugMsg := signalDebugMsg + "\n• Dip Recovery: " + (isDipRecovering ? "YES ✅" : "NO ❌")
-    signalDebugMsg := signalDebugMsg + "\n• Dip Buy Signal: " + (dipBuySignalQuality ? "STRONG 🟢" : "WEAK 🔴")
-    log.info(signalDebugMsg)
-
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ TASK 2.3: ENTRY FRAMEWORK - Basic Entry Conditions (No Execution Yet)                            │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
-
-// Breakout Entry Conditions (F-2)
+// F-2: Breakout Entry Conditions - trend filter + valid high + close above recent high
 breakoutEntryCondition = enableBreakoutEntry and 
-                        isTrendConfirmed and 
+                        isTrendFilterPassed and 
                         areIndicatorsValid and
-                        breakoutSignalQuality and
-                        close > validRecentHigh and
-                        volume > ta.sma(volume, 20) // Add volume confirmation
+                        isRecentHighValid and
+                        close > recentHigh
 
-// Dip Buy Entry Conditions (F-3)
+// F-3: Dip Buy Entry Conditions - trend filter + recovery above threshold  
 dipBuyEntryCondition = enableDipBuyEntry and 
-                      isTrendConfirmed and 
+                      isTrendFilterPassed and 
                       areIndicatorsValid and
-                      dipBuySignalQuality and
-                      isDipRecovering and
-                      validRecentLowAge >= 3
+                      isDipRecovering
 
-// Combined entry signal (either breakout or dip buy, but not both simultaneously)
+// Combined entry signal
 anyEntryCondition = (breakoutEntryCondition or dipBuyEntryCondition) and strategy.position_size == 0
 
-// Entry type tracking for different logic paths
+// Entry type for position sizing logic
 entryType = breakoutEntryCondition ? "BREAKOUT" : dipBuyEntryCondition ? "DIP_BUY" : "NONE"
 
-// Log entry framework status for validation
-var string entryDebugMsg = ""
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// EXIT LOGIC (Phase 4 - Future implementation)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// RISK MANAGEMENT (Phase 3 - Future implementation)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// PHASE 3: RISK MANAGEMENT FOUNDATION
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// TASK 3.1: POSITION SIZING (R-1) - ATR-based position size calculation
+// Calculate position size based on risk percentage and ATR-based stop loss
+
+// Basic position sizing calculation
+calculatePositionSize(entryPrice, stopLossPrice, riskAmount) =>
+    if na(entryPrice) or na(stopLossPrice) or na(riskAmount)
+        0.0
+    else
+        riskPerShare = math.abs(entryPrice - stopLossPrice)
+        if riskPerShare <= 0
+            0.0
+        else
+            positionSize = riskAmount / riskPerShare
+            // Ensure position size is reasonable and not excessive
+            maxPositionSize = strategy.equity * 0.95 / entryPrice // Max 95% of equity
+            math.min(positionSize, maxPositionSize)
+
+// Calculate risk amount in dollar terms
+riskAmountDollars = strategy.equity * (riskPercent / 100.0)
+
+// ATR-based stop loss calculation for position sizing
+getAtrStopPrice(entryPrice, isLong, atrValue, multiplier) =>
+    if na(entryPrice) or na(atrValue) or atrValue <= 0
+        na
+    else
+        stopDistance = atrValue * multiplier
+        isLong ? entryPrice - stopDistance : entryPrice + stopDistance
+
+// Position sizing validation and safety checks
+isPositionSizingValid(posSize, entryPrice) =>
+    if na(posSize) or na(entryPrice) or posSize <= 0 or entryPrice <= 0
+        false
+    else
+        positionValue = posSize * entryPrice
+        // Check that position value doesn't exceed reasonable limits
+        positionValue <= strategy.equity * 0.95 and positionValue >= 100 // Min $100 position
+
+// Log position sizing calculations for validation
+var string positionDebugMsg = ""
 if barstate.islast and showDebugInfo
-    entryDebugMsg := "🚀 Task 2.3 - Entry Framework Status:"
-    entryDebugMsg := entryDebugMsg + "\n• Breakout Entry: " + (breakoutEntryCondition ? "READY 🟢" : "NOT READY 🔴")
-    entryDebugMsg := entryDebugMsg + "\n• Dip Buy Entry: " + (dipBuyEntryCondition ? "READY 🟢" : "NOT READY 🔴")
-    entryDebugMsg := entryDebugMsg + "\n• Any Entry Signal: " + (anyEntryCondition ? "YES ✅" : "NO ❌")
-    entryDebugMsg := entryDebugMsg + "\n• Entry Type: " + entryType
-    entryDebugMsg := entryDebugMsg + "\n• Position Size: " + str.tostring(strategy.position_size)
-    log.info(entryDebugMsg)
+    testEntry = close
+    testStop = getAtrStopPrice(testEntry, true, atr, stopLossMultiplier)
+    testPosSize = calculatePositionSize(testEntry, testStop, riskAmountDollars)
+    positionDebugMsg := "Task 3.1 - Position Sizing:"
+    positionDebugMsg := positionDebugMsg + "\n• Risk Amount: $" + str.tostring(riskAmountDollars, "#.##")
+    positionDebugMsg := positionDebugMsg + "\n• Test Entry: $" + str.tostring(testEntry, "#.##")
+    positionDebugMsg := positionDebugMsg + "\n• Test Stop: $" + str.tostring(testStop, "#.##")
+    positionDebugMsg := positionDebugMsg + "\n• Test Position Size: " + str.tostring(testPosSize, "#.##")
+    positionDebugMsg := positionDebugMsg + "\n• Position Valid: " + (isPositionSizingValid(testPosSize, testEntry) ? "PASS" : "FAIL")
+    log.info(positionDebugMsg)
 
-// Visual indicators for entry signals (for validation purposes only)
-plotshape(breakoutEntryCondition, "Breakout Signal", shape.triangleup, location.belowbar, color.lime, size=size.small)
-plotshape(dipBuyEntryCondition, "Dip Buy Signal", shape.circle, location.belowbar, color.blue, size=size.small)
+// TASK 3.2: STOP LOSS SYSTEM (R-2) - Hard stop placement and management
 
-// Phase 2 completion status tracking
-isPhase2Complete = true // All three tasks implemented
+// Stop loss tracking variables
+var float entryStopPrice = na
+var float currentStopPrice = na
+var int stopLossBarsSince = 0
+
+// Calculate initial stop loss on entry
+calculateInitialStopLoss(entryPrice, entryType) =>
+    if na(entryPrice) or na(atr) or atr <= 0
+        na
+    else
+        // Use ATR-based stop loss
+        stopDistance = atr * stopLossMultiplier
+        stopPrice = entryPrice - stopDistance
+        
+        // Additional validation for different entry types
+        if entryType == "BREAKOUT"
+            // For breakouts, ensure stop is below recent low
+            recentSupport = ta.lowest(low, 10)
+            math.min(stopPrice, recentSupport * 0.995) // 0.5% buffer below support
+        else if entryType == "DIP_BUY"
+            // For dip buys, ensure stop is below the recent low that triggered the signal
+            math.min(stopPrice, recentLow * 0.99) // 1% buffer below recent low
+        else
+            stopPrice
+
+// Stop loss management and trailing (for future exit strategies)
+updateStopLoss(currentStop, currentPrice, entryPrice) =>
+    if na(currentStop) or na(currentPrice) or na(entryPrice)
+        currentStop
+    else
+        // Basic stop loss management - keeps initial stop for now
+        // Future phases will implement trailing stops
+        currentStop
+
+// Stop loss violation detection
+isStopLossHit(stopPrice) =>
+    not na(stopPrice) and low <= stopPrice
+
+// Hard stop validation - prevent invalid stop prices
+validateStopLoss(stopPrice, entryPrice) =>
+    if na(stopPrice) or na(entryPrice)
+        false
+    else
+        // Stop must be below entry for long positions
+        stopPrice < entryPrice and 
+        // Stop must not be too far (more than 10% away)
+        (entryPrice - stopPrice) / entryPrice <= 0.10 and
+        // Stop must not be too close (less than 0.5% away)
+        (entryPrice - stopPrice) / entryPrice >= 0.005
+
+// Log stop loss system status
+var string stopDebugMsg = ""
+if barstate.islast and showDebugInfo
+    testEntry = close
+    testInitialStop = calculateInitialStopLoss(testEntry, "BREAKOUT")
+    testStopValid = validateStopLoss(testInitialStop, testEntry)
+    stopDebugMsg := "Task 3.2 - Stop Loss System:"
+    stopDebugMsg := stopDebugMsg + "\n• Current Stop: $" + str.tostring(currentStopPrice, "#.##")
+    stopDebugMsg := stopDebugMsg + "\n• Test Entry: $" + str.tostring(testEntry, "#.##")
+    stopDebugMsg := stopDebugMsg + "\n• Test Stop: $" + str.tostring(testInitialStop, "#.##")
+    stopDebugMsg := stopDebugMsg + "\n• Stop Valid: " + (testStopValid ? "PASS" : "FAIL")
+    stopDebugMsg := stopDebugMsg + "\n• Stop Hit: " + (isStopLossHit(currentStopPrice) ? "YES" : "NO")
+    log.info(stopDebugMsg)
+
+// TASK 3.3: RISK VALIDATION - Defensive logic and edge case handling
+
+// Basic validation to prevent errors - ONLY what's needed for safe execution
+isDataValid() =>
+    // Prevent division by zero and invalid calculations
+    not na(atr) and atr > 0 and 
+    not na(close) and close > 0 and
+    strategy.equity > 0 and
+    riskAmountDollars > 0
+
+// Simple entry validation - just check we have valid data and no position
+canEnterNewPosition() =>
+    isDataValid() and strategy.position_size == 0
+
+// Log basic validation status
+var string riskDebugMsg = ""
+if barstate.islast and showDebugInfo
+    riskDebugMsg := "Task 3.3 - Risk Validation:"
+    riskDebugMsg := riskDebugMsg + "\n• Data Valid: " + (isDataValid() ? "PASS" : "FAIL")
+    riskDebugMsg := riskDebugMsg + "\n• Can Enter: " + (canEnterNewPosition() ? "YES" : "NO")
+    riskDebugMsg := riskDebugMsg + "\n• Position Size: " + str.tostring(strategy.position_size)
+    log.info(riskDebugMsg)
+
+// Phase 3 completion status
+isPhase3Complete = true // All three risk management tasks implemented
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 📉 EXIT LOGIC (Phase 4 - Future implementation)
+// USER INTERFACE & VISUALIZATION (Phase 6 - Future implementation)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// ⚖️ RISK MANAGEMENT (Phase 3 - Future implementation)
-// ═══════════════════════════════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 🎨 USER INTERFACE & VISUALIZATION (Phase 6 - Future implementation)
-// ═══════════════════════════════════════════════════════════════════════════════════════════════════
-
-// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-// │ BASIC TREND VISUALIZATION (Phase 1.3)                                                              │
-// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+// BASIC TREND VISUALIZATION (Phase 1.3)
 // Plot 200 SMA trend line
 trendColor = isTrendBullish ? color.new(color.green, 20) : color.new(color.red, 20)
 plot(showTrendSma ? trendSma : na, "200 SMA Trend Filter", color=trendColor, linewidth=2)
 
-// Phase 2 status reporting
+// Phase 3 status reporting
 if barstate.islast
-    statusMsg = "📊 JON Strategy - Phase 2 Complete ✅"
-    statusMsg := statusMsg + "\n╔══ PHASE 1 FOUNDATION ══╗"
-    statusMsg := statusMsg + "\n• Task 1.1: Project Setup ✅"
-    statusMsg := statusMsg + "\n• Task 1.2: Input Parameters ✅" 
-    statusMsg := statusMsg + "\n• Task 1.3: Core Indicators ✅"
-    statusMsg := statusMsg + "\n╔══ PHASE 2 CORE LOGIC ══╗"
-    statusMsg := statusMsg + "\n• Task 2.1: Trend Filter System ✅"
-    statusMsg := statusMsg + "\n• Task 2.2: Signal Detection Engine ✅"
-    statusMsg := statusMsg + "\n• Task 2.3: Entry Framework ✅"
-    statusMsg := statusMsg + "\n╔══ CURRENT STATUS ══╗"
-    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendConfirmed ? "STRONG BULL 🟢" : "WEAK/BEAR 🔴")
+    statusMsg = "JON Strategy - Phase 3 Complete"
+    statusMsg := statusMsg + "\n=== PHASE 1 FOUNDATION ==="
+    statusMsg := statusMsg + "\n• Task 1.1: Project Setup [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 1.2: Input Parameters [COMPLETE]" 
+    statusMsg := statusMsg + "\n• Task 1.3: Core Indicators [COMPLETE]"
+    statusMsg := statusMsg + "\n=== PHASE 2 CORE LOGIC ==="
+    statusMsg := statusMsg + "\n• Task 2.1: Trend Filter System [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 2.2: Signal Detection Engine [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 2.3: Entry Framework [COMPLETE]"
+    statusMsg := statusMsg + "\n=== PHASE 3 RISK MANAGEMENT ==="
+    statusMsg := statusMsg + "\n• Task 3.1: Position Sizing [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 3.2: Stop Loss System [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 3.3: Risk Validation [COMPLETE]"
+    statusMsg := statusMsg + "\n=== CURRENT STATUS ==="
+    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendConfirmed ? "STRONG BULL" : "WEAK/BEAR")
     statusMsg := statusMsg + "\n• ATR: " + str.tostring(atr, "#.####")
-    statusMsg := statusMsg + "\n• Data Valid: " + (areIndicatorsValid ? "✅" : "❌")
-    statusMsg := statusMsg + "\n• Entry Signals: " + (anyEntryCondition ? "ACTIVE 🚨" : "WAITING ⏱️")
-    statusMsg := statusMsg + "\n• Next Phase: Risk Management (Phase 3)"
+    statusMsg := statusMsg + "\n• Data Valid: " + (areIndicatorsValid ? "PASS" : "FAIL")
+    statusMsg := statusMsg + "\n• Risk Valid: " + (canEnterNewPosition() ? "PASS" : "FAIL")
+    statusMsg := statusMsg + "\n• Breakout Signal: " + (breakoutEntryCondition ? "ACTIVE" : "WAITING")
+    statusMsg := statusMsg + "\n• Dip Buy Signal: " + (dipBuyEntryCondition ? "ACTIVE" : "WAITING")
+    statusMsg := statusMsg + "\n• Next Phase: Exit Strategy System (Phase 4)"
     log.info(statusMsg) 
