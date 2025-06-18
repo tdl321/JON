@@ -36,6 +36,10 @@ strategy("JON - Robust Trading Strategy",
 // v1.0.0 - Initial template setup with proper headers and structure
 // v1.1.0 - Added comprehensive input parameter framework for all PRD requirements
 // v1.2.0 - Implemented core indicators with validation (SMA, ATR, reference asset)
+// v2.0.0 - Phase 2 Complete: Core Strategy Logic Implementation
+// v2.1.0 - Task 2.1: Enhanced trend filter with strength validation
+// v2.2.0 - Task 2.2: Signal detection engine for breakouts and dip buys  
+// v2.3.0 - Task 2.3: Entry framework with comprehensive condition logic
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -151,8 +155,127 @@ if barstate.islast and showDebugInfo
     log.info(debugMsg)
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// 📈 ENTRY LOGIC (Phase 2 - Future implementation)
+// 📈 PHASE 2: CORE STRATEGY LOGIC
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+// │ TASK 2.1: TREND FILTER SYSTEM (F-1)                                                               │
+// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+// Enhanced trend filter with reference asset support
+// The trend filter is already implemented above in the core indicators section
+// Here we add additional trend validation logic for more robust filtering
+
+// Additional trend strength validation
+var float trendStrengthHistory = 0.0
+trendStrengthScore = close > trendSma ? 1.0 : -1.0
+trendStrengthHistory := trendStrengthHistory * 0.9 + trendStrengthScore * 0.1
+
+// Strong trend confirmation (price has been consistently above/below SMA)
+isStrongTrend = math.abs(trendStrengthHistory) > 0.3
+isTrendConfirmed = isTrendFilterPassed and isStrongTrend
+
+// Log trend filter status for validation
+var string trendDebugMsg = ""
+if barstate.islast and showDebugInfo
+    trendDebugMsg := "🎯 Task 2.1 - Trend Filter Status:"
+    trendDebugMsg := trendDebugMsg + "\n• Primary Trend: " + (isTrendBullish ? "BULL 🟢" : "BEAR 🔴")
+    trendDebugMsg := trendDebugMsg + "\n• Reference Trend: " + (isReferenceBullish ? "BULL 🟢" : "BEAR 🔴")
+    trendDebugMsg := trendDebugMsg + "\n• Combined Filter: " + (isTrendFilterPassed ? "PASS ✅" : "FAIL ❌")
+    trendDebugMsg := trendDebugMsg + "\n• Trend Strength: " + str.tostring(trendStrengthHistory, "#.##")
+    trendDebugMsg := trendDebugMsg + "\n• Strong Trend: " + (isStrongTrend ? "YES ✅" : "NO ❌")
+    log.info(trendDebugMsg)
+
+// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+// │ TASK 2.2: SIGNAL DETECTION ENGINE - Recent High/Low Identification                                │
+// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+// Recent Highs Detection for Breakout Entry (F-2)
+recentHigh = ta.highest(high, breakoutLookback)
+recentHighAge = ta.barssince(high == recentHigh)
+isRecentHighValid = recentHighAge >= breakoutMinAge and recentHighAge <= breakoutMaxAge
+
+// Find the actual recent high value and age for signal validation
+var float validRecentHigh = 0.0
+var int validRecentHighAge = 0
+if high == recentHigh and barstate.isconfirmed
+    validRecentHigh := high
+    validRecentHighAge := 0
+else if validRecentHighAge < breakoutMaxAge
+    validRecentHighAge := validRecentHighAge + 1
+
+// Recent Lows Detection for Dip Buy Entry (F-3)  
+recentLow = ta.lowest(low, dipBuyLookback)
+recentLowAge = ta.barssince(low == recentLow)
+isDipRecovering = close > recentLow * (1 + dipRecoveryThreshold / 100)
+
+// Find the actual recent low for dip buy validation
+var float validRecentLow = 0.0
+var int validRecentLowAge = 0
+if low == recentLow and barstate.isconfirmed
+    validRecentLow := low
+    validRecentLowAge := 0
+else if validRecentLowAge < dipBuyLookback
+    validRecentLowAge := validRecentLowAge + 1
+
+// Signal quality assessment
+breakoutSignalQuality = isRecentHighValid and high > validRecentHigh
+dipBuySignalQuality = isDipRecovering and validRecentLowAge >= 3 and validRecentLowAge <= dipBuyLookback
+
+// Log signal detection status for validation
+var string signalDebugMsg = ""
+if barstate.islast and showDebugInfo
+    signalDebugMsg := "🔍 Task 2.2 - Signal Detection Status:"
+    signalDebugMsg := signalDebugMsg + "\n• Recent High: " + str.tostring(validRecentHigh, "#.##") + " (Age: " + str.tostring(validRecentHighAge) + ")"
+    signalDebugMsg := signalDebugMsg + "\n• High Valid: " + (isRecentHighValid ? "YES ✅" : "NO ❌")
+    signalDebugMsg := signalDebugMsg + "\n• Breakout Signal: " + (breakoutSignalQuality ? "STRONG 🟢" : "WEAK 🔴")
+    signalDebugMsg := signalDebugMsg + "\n• Recent Low: " + str.tostring(validRecentLow, "#.##") + " (Age: " + str.tostring(validRecentLowAge) + ")"
+    signalDebugMsg := signalDebugMsg + "\n• Dip Recovery: " + (isDipRecovering ? "YES ✅" : "NO ❌")
+    signalDebugMsg := signalDebugMsg + "\n• Dip Buy Signal: " + (dipBuySignalQuality ? "STRONG 🟢" : "WEAK 🔴")
+    log.info(signalDebugMsg)
+
+// ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+// │ TASK 2.3: ENTRY FRAMEWORK - Basic Entry Conditions (No Execution Yet)                            │
+// └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+// Breakout Entry Conditions (F-2)
+breakoutEntryCondition = enableBreakoutEntry and 
+                        isTrendConfirmed and 
+                        areIndicatorsValid and
+                        breakoutSignalQuality and
+                        close > validRecentHigh and
+                        volume > ta.sma(volume, 20) // Add volume confirmation
+
+// Dip Buy Entry Conditions (F-3)
+dipBuyEntryCondition = enableDipBuyEntry and 
+                      isTrendConfirmed and 
+                      areIndicatorsValid and
+                      dipBuySignalQuality and
+                      isDipRecovering and
+                      validRecentLowAge >= 3
+
+// Combined entry signal (either breakout or dip buy, but not both simultaneously)
+anyEntryCondition = (breakoutEntryCondition or dipBuyEntryCondition) and strategy.position_size == 0
+
+// Entry type tracking for different logic paths
+entryType = breakoutEntryCondition ? "BREAKOUT" : dipBuyEntryCondition ? "DIP_BUY" : "NONE"
+
+// Log entry framework status for validation
+var string entryDebugMsg = ""
+if barstate.islast and showDebugInfo
+    entryDebugMsg := "🚀 Task 2.3 - Entry Framework Status:"
+    entryDebugMsg := entryDebugMsg + "\n• Breakout Entry: " + (breakoutEntryCondition ? "READY 🟢" : "NOT READY 🔴")
+    entryDebugMsg := entryDebugMsg + "\n• Dip Buy Entry: " + (dipBuyEntryCondition ? "READY 🟢" : "NOT READY 🔴")
+    entryDebugMsg := entryDebugMsg + "\n• Any Entry Signal: " + (anyEntryCondition ? "YES ✅" : "NO ❌")
+    entryDebugMsg := entryDebugMsg + "\n• Entry Type: " + entryType
+    entryDebugMsg := entryDebugMsg + "\n• Position Size: " + str.tostring(strategy.position_size)
+    log.info(entryDebugMsg)
+
+// Visual indicators for entry signals (for validation purposes only)
+plotshape(breakoutEntryCondition, "Breakout Signal", shape.triangleup, location.belowbar, color.lime, size=size.small)
+plotshape(dipBuyEntryCondition, "Dip Buy Signal", shape.circle, location.belowbar, color.blue, size=size.small)
+
+// Phase 2 completion status tracking
+isPhase2Complete = true // All three tasks implemented
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 // 📉 EXIT LOGIC (Phase 4 - Future implementation)
@@ -173,13 +296,21 @@ if barstate.islast and showDebugInfo
 trendColor = isTrendBullish ? color.new(color.green, 20) : color.new(color.red, 20)
 plot(showTrendSma ? trendSma : na, "200 SMA Trend Filter", color=trendColor, linewidth=2)
 
-// Temporary placeholder to make script compile
+// Phase 2 status reporting
 if barstate.islast
-    statusMsg = "📊 JON Strategy - Phase 1 Complete ✅"
+    statusMsg = "📊 JON Strategy - Phase 2 Complete ✅"
+    statusMsg := statusMsg + "\n╔══ PHASE 1 FOUNDATION ══╗"
     statusMsg := statusMsg + "\n• Task 1.1: Project Setup ✅"
     statusMsg := statusMsg + "\n• Task 1.2: Input Parameters ✅" 
     statusMsg := statusMsg + "\n• Task 1.3: Core Indicators ✅"
-    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendFilterPassed ? "BULL 🟢" : "BEAR 🔴")
+    statusMsg := statusMsg + "\n╔══ PHASE 2 CORE LOGIC ══╗"
+    statusMsg := statusMsg + "\n• Task 2.1: Trend Filter System ✅"
+    statusMsg := statusMsg + "\n• Task 2.2: Signal Detection Engine ✅"
+    statusMsg := statusMsg + "\n• Task 2.3: Entry Framework ✅"
+    statusMsg := statusMsg + "\n╔══ CURRENT STATUS ══╗"
+    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendConfirmed ? "STRONG BULL 🟢" : "WEAK/BEAR 🔴")
     statusMsg := statusMsg + "\n• ATR: " + str.tostring(atr, "#.####")
     statusMsg := statusMsg + "\n• Data Valid: " + (areIndicatorsValid ? "✅" : "❌")
+    statusMsg := statusMsg + "\n• Entry Signals: " + (anyEntryCondition ? "ACTIVE 🚨" : "WAITING ⏱️")
+    statusMsg := statusMsg + "\n• Next Phase: Risk Management (Phase 3)"
     log.info(statusMsg) 

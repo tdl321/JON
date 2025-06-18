@@ -1,0 +1,155 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Backtesting standards and validation procedures for JON strategy. Specifies mandatory asset testing matrix, historical crisis testing requirements, performance metrics, and documentation standards for strategy validation.
+alwaysApply: false
+---
+
+# Backtest Validation Standards for JON
+
+## Pre-Backtest Requirements
+
+### Data Quality Validation
+- **Historical Depth**: Minimum 10 years of data where available
+- **Data Completeness**: No gaps in critical periods (crashes, bull runs)
+- **Symbol Accuracy**: Verify correct instrument symbols and exchanges
+- **Timeframe Consistency**: Use same timeframe across all asset tests
+
+### Testing Environment Setup
+```pinescript
+// Required strategy settings for consistent testing
+//@strategy_set_property("initial_capital", 100000)
+//@strategy_set_property("currency", "USD") 
+//@strategy_set_property("commission_type", strategy.cash_per_order)
+//@strategy_set_property("commission_value", 2.0)  // Realistic commission
+//@strategy_set_property("slippage", 2)  // Account for slippage
+```
+
+## Mandatory Asset Testing Matrix
+
+### Primary Assets (Must All Pass)
+| Asset | Symbol | Minimum Period | Key Test Periods |
+|-------|--------|---------------|------------------|
+| Bitcoin | BTCUSD | 2017-Present | 2018 crash, 2020 crash, 2022 correction |
+| NASDAQ | NDX or QQQ | 2000-Present | 2000 bubble, 2008 crisis, 2020 crash |
+| Gold | XAUUSD | 2000-Present | 2008 crisis, 2011 peak, 2020 surge |
+
+### Secondary Assets (Optional Validation)
+- **S&P 500**: SPX/SPY for broad market validation
+- **Ethereum**: ETHUSD for alt-crypto validation  
+- **Silver**: XAGUSD for precious metals validation
+
+## Historical Crisis Testing
+
+### Required Crisis Periods
+**2000 Dot-Com Crash**
+- Period: March 2000 - October 2002
+- Validation: Strategy should go to cash and preserve capital
+- Benchmark: NDX dropped ~78% from peak
+
+**2008 Financial Crisis**
+- Period: October 2007 - March 2009  
+- Validation: Strategy should sidestep major decline
+- Benchmark: SPX dropped ~57% from peak
+
+**2020 COVID Crash**
+- Period: February 2020 - March 2020
+- Validation: Quick exit and re-entry capability
+- Benchmark: 35% drop in 5 weeks, then recovery
+
+**2022 Growth Correction**
+- Period: January 2022 - October 2022
+- Validation: Avoid extended tech/growth decline
+- Benchmark: NDX dropped ~34% from peak
+
+### Crisis Performance Criteria
+- **Maximum Drawdown**: < 50% of buy & hold drawdown
+- **Recovery Time**: Faster than buy & hold to new highs
+- **Capital Preservation**: Maintain 80%+ of peak equity during crisis
+
+## Performance Validation Framework
+
+### Core Metrics (All Must Pass)
+```pinescript
+// Track these metrics in strategy output
+strategy.equity > buy_and_hold_equity  // Outperform passive
+strategy.max_drawdown < (buy_and_hold_dd * 0.6)  // Lower drawdown
+strategy.netprofit > 0  // Absolute profitability
+```
+
+### Risk-Adjusted Metrics
+- **Sharpe Ratio**: Target > 1.0 (preferably > 1.5)
+- **Calmar Ratio**: Annual return / Max Drawdown > 0.5
+- **Win Rate**: Track but not primary (system may have <50% win rate)
+- **Profit Factor**: Target > 1.5
+
+### Trade Analysis Requirements
+- **Average Holding Period**: Should align with "low frequency" philosophy
+- **Trade Frequency**: Target < 12 trades per year per asset
+- **Position Sizing**: Validate ATR-based sizing is working correctly
+- **Stop Loss Hit Rate**: Track effectiveness of risk management
+
+## Validation Procedures
+
+### Phase 1: Individual Asset Testing
+1. **Load Historical Data**: Verify data quality and completeness
+2. **Run Full Backtest**: Generate complete performance report
+3. **Analyze Crisis Periods**: Zoom into each major crash period
+4. **Compare to Benchmark**: Side-by-side equity curve analysis
+5. **Document Results**: Record all key metrics and observations
+
+### Phase 2: Cross-Asset Validation  
+1. **Parameter Consistency**: Ensure same settings work across assets
+2. **Performance Ranking**: Rank assets by risk-adjusted returns
+3. **Correlation Analysis**: Verify strategy works in different market regimes
+4. **Robustness Check**: Small parameter changes shouldn't break strategy
+
+### Phase 3: Forward Testing Preparation
+1. **Paper Trading Setup**: Configure for real-time validation
+2. **Alert System**: Test entry/exit signal generation
+3. **Risk Management**: Validate position sizing in live market
+4. **Performance Tracking**: Set up ongoing monitoring systems
+
+## Backtest Documentation Requirements
+
+### Performance Report Template
+```
+JON Strategy Backtest Report
+Asset: [SYMBOL] | Period: [START] - [END] | Timeframe: [TIMEFRAME]
+
+PERFORMANCE SUMMARY:
+- Net Profit: $X,XXX (X.X%)
+- Buy & Hold Return: $X,XXX (X.X%) 
+- Outperformance: +X.X%
+- Maximum Drawdown: -X.X% (vs -X.X% B&H)
+- Sharpe Ratio: X.XX
+- Profit Factor: X.XX
+
+TRADE STATISTICS:
+- Total Trades: XXX
+- Win Rate: XX.X%
+- Average Trade: $XXX
+- Largest Win: $X,XXX
+- Largest Loss: $XXX
+
+CRISIS PERFORMANCE:
+[Detail performance during each major crisis period]
+
+PARAMETER SETTINGS:
+[Document all key parameters used]
+```
+
+### Code Review Checklist
+- [ ] All strategy logic matches [PRD requirements](mdc:.cursor/rules/prd.mdc)
+- [ ] Entry/exit signals are clearly defined and logged
+- [ ] Risk management is properly implemented
+- [ ] Performance tracking is accurate and complete
+- [ ] Code follows [Pine Script standards](mdc:.cursor/rules/pine-script-standards.mdc)
+
+## Integration Requirements
+This validation process must be completed following the [JON Development Protocol](mdc:.cursor/rules/jon-development-protocol.mdc) Step 4 requirements.
+
+Any changes to strategy logic must be re-validated against these standards before deployment.

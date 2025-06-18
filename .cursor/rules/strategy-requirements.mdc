@@ -1,0 +1,134 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Complete JON strategy architecture requirements including trend filters, dual entry system, exit strategies, and risk management. Defines validation criteria, performance benchmarks, and implementation checklists.
+alwaysApply: false
+---
+
+# JON Strategy Requirements & Validation
+
+## Core Strategy Architecture
+
+### Required Components (Must Implement All)
+
+#### 1. Trend Filter System (F-1)
+- **200-Period SMA Trend Filter**: Primary asset must be above 200 SMA
+- **Reference Asset Filter** (Optional): Secondary confirmation (e.g., CRYPTOCAP:TOTAL for crypto)
+- **Implementation**: Both conditions must be true for long entries
+
+#### 2. Dual Entry System
+**F-2: Breakout Entry**
+- Identify recent high within user-defined age range
+- Enter long on candle close above recent high
+- Must include age validation and breakout confirmation
+
+**F-3: Dip Buy Entry**  
+- Identify recent low within lookback period
+- Enter long on candle close above recovery threshold
+- Must include low validation and recovery confirmation
+
+#### 3. Exit Strategy Framework (F-4)
+**ATR Trail Mode** (for BTC/Gold):
+- Dynamic trailing stop based on ATR
+- Locks in profits as trend continues
+- Suitable for trending assets
+
+**Aggressive Profit Take Mode** (for Indices):
+- Fixed profit targets with quick exits
+- Optimized for mean-reverting behavior
+- User-selectable via input parameter
+
+#### 4. Risk Management System
+**R-1: ATR-Based Position Sizing**
+```pinescript
+// Required formula implementation
+positionSize = (riskCapital) / (atr * stopLossMultiplier)
+riskCapital = strategy.equity * (riskPercent / 100)
+```
+
+**R-2: Hard Stop Loss**
+- Every trade must have a stop loss
+- Stop placed N * ATR below entry price
+- Non-negotiable risk management
+
+## Validation Requirements
+
+### Multi-Asset Testing (B-1)
+Strategy must be profitable across:
+- **BTCUSD**: Primary crypto validation
+- **NDX/QQQ**: Index behavior validation  
+- **XAUUSD**: Commodity/safe haven validation
+
+**Success Criteria**: Outperform buy & hold on risk-adjusted basis for all three assets
+
+### Historical Robustness (B-2)
+Strategy must be tested against major market crises:
+- **1987**: Black Monday crash
+- **2000**: Dot-com bubble burst
+- **2008**: Financial crisis
+- **2020**: COVID-19 crash
+- **2022**: Growth/tech correction
+
+**Success Criteria**: Strategy should preserve capital and recover faster than buy & hold
+
+### Parameter Discipline (B-3)
+- **Global Default Preset**: Universal parameters that work across assets
+- **Minimal Customization**: Asset-specific adjustments only when explicitly justified
+- **No Over-Optimization**: Parameters must be robust, not curve-fitted
+
+## Performance Benchmarks
+
+### Required Metrics
+- **Net Profit**: Must exceed buy & hold over same period
+- **Maximum Drawdown**: Must be significantly lower than buy & hold
+- **Profit Factor**: Target > 1.5 minimum
+- **Win Rate**: Not critical, but track for analysis
+- **Average Trade**: Should be meaningful relative to commission costs
+
+### Risk-Adjusted Returns
+- **Sharpe Ratio**: Target > 1.0
+- **Calmar Ratio**: Track drawdown-adjusted returns
+- **Volatility**: Should be lower than underlying asset
+
+## UI/UX Requirements (UI-1, UI-2)
+
+### On-Chart Visualization
+- **Entry Signals**: Clear ▲ markers for long entries
+- **Exit Signals**: Clear ▼ markers for exits
+- **Trend Filter**: 200 SMA line clearly visible
+- **Stop Levels**: Current stop loss and trail levels
+- **Position Info**: Current position size and P&L
+
+### Strategy Tester Integration
+- **Equity Curve**: Strategy performance vs buy & hold
+- **Key Statistics**: Net profit, drawdown, trades, etc.
+- **Benchmark Overlay**: Clear comparison to passive strategy
+
+## Implementation Checklist
+
+### Before Development
+- [ ] Confirm specific asset and timeframe for testing
+- [ ] Review historical data availability
+- [ ] Plan parameter ranges and defaults
+- [ ] Design entry/exit logic flow
+
+### During Development  
+- [ ] Implement each component incrementally
+- [ ] Test each module independently
+- [ ] Validate logic with manual calculations
+- [ ] Check performance impact on TradingView
+
+### After Development
+- [ ] Run full backtest on all three primary assets
+- [ ] Validate performance during historical crash periods
+- [ ] Compare results to buy & hold benchmark
+- [ ] Document any asset-specific parameter adjustments
+- [ ] Generate comprehensive performance report
+
+## Integration with Development Protocol
+This strategy must be implemented following the [JON Development Protocol](mdc:.cursor/rules/jon-development-protocol.mdc) and [Pine Script Standards](mdc:.cursor/rules/pine-script-standards.mdc).
+
+All code changes must support the [complete PRD requirements](mdc:.cursor/rules/prd.mdc) without compromise.

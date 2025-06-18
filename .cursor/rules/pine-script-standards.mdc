@@ -1,0 +1,137 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Pine Script v5 coding standards and best practices for JON strategy development. Covers naming conventions, security requirements, performance optimization, logging standards, and function documentation requirements.
+alwaysApply: false
+---
+
+# Pine Script v5 Coding Standards for JON
+
+## Code Style & Structure
+
+### Variable Naming Conventions
+```pinescript
+// ✅ Good - Descriptive and clear
+isTrendBullish = close > ta.sma(close, 200)
+atrStopLoss = ta.atr(14) * stopMultiplier
+entryPrice = strategy.position_avg_price
+
+// ❌ Bad - Ambiguous or unclear
+trend = close > ta.sma(close, 200)
+stop = ta.atr(14) * 2
+price = strategy.position_avg_price
+```
+
+### Function Organization
+Organize code into logical sections with clear comments:
+
+```pinescript
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// 📊 INDICATOR CALCULATIONS
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// 📈 ENTRY LOGIC
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// 📉 EXIT LOGIC
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// ⚖️ RISK MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+```
+
+## Security & Safety Standards
+
+### Input Validation
+```pinescript
+// ✅ Always validate external data
+referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Symbol")
+referenceClose = request.security(referenceSymbol, timeframe.period, close)
+isReferenceValid = not na(referenceClose)
+
+// ✅ Use confirm=true for sensitive inputs
+webhookUrl = input.string("", "Webhook URL", confirm=true)
+```
+
+### Error Prevention
+```pinescript
+// ✅ Prevent division by zero
+positionSize = math.na(atr) or atr == 0 ? 0 : (riskCapital / (atr * stopMultiplier))
+
+// ✅ Check for valid price data
+validPrice = not na(close) and not na(high) and not na(low)
+if validPrice
+    // Execute trading logic
+```
+
+## Performance Optimization
+
+### Efficient Indicator Calculations
+```pinescript
+// ✅ Calculate once, use multiple times
+sma200 = ta.sma(close, 200)
+isTrendBullish = close > sma200
+isReferenceAboveSMA = referenceClose > ta.sma(referenceClose, 200)
+
+// ❌ Redundant calculations
+isTrendBullish = close > ta.sma(close, 200)
+isStrongTrend = close > ta.sma(close, 200) * 1.02  // Recalculating SMA
+```
+
+### Resource Management
+- Limit `request.security()` calls to essential data only
+- Use `varip` sparingly and only when necessary for state management
+- Avoid complex calculations in tight loops
+
+## Logging & Debugging Standards
+
+### Trade Execution Logging
+```pinescript
+// ✅ Log all important events
+if strategy.position_size > 0 and strategy.position_size[1] == 0
+    log.info("🟢 ENTRY: Price=" + str.tostring(close) + " ATR=" + str.tostring(atr) + " Stop=" + str.tostring(stopLoss))
+
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    log.info("🔴 EXIT: Price=" + str.tostring(close) + " P&L=" + str.tostring(strategy.netprofit))
+```
+
+### Strategy State Tracking
+```pinescript
+// ✅ Track key strategy states
+if barstate.islast
+    log.info("📊 Strategy Status - Position: " + str.tostring(strategy.position_size) + 
+             " | Equity: $" + str.tostring(strategy.equity) + 
+             " | DD: " + str.tostring(strategy.max_drawdown))
+```
+
+## Documentation Requirements
+
+### Function Documentation
+```pinescript
+// @function Calculates position size based on ATR and risk percentage
+// @param riskPercent The percentage of account to risk per trade
+// @param atrValue Current ATR value for volatility measurement
+// @param stopMultiplier Multiplier for ATR-based stop loss
+// @returns Position size in units/shares
+calculatePositionSize(riskPercent, atrValue, stopMultiplier) =>
+    accountEquity = strategy.equity
+    riskCapital = accountEquity * (riskPercent / 100)
+    stopDistance = atrValue * stopMultiplier
+    math.na(stopDistance) or stopDistance == 0 ? 0 : (riskCapital / stopDistance)
+```
+
+## Integration with JON Strategy
+All code must support these [core strategy components](mdc:.cursor/rules/prd.mdc):
+- **F-1**: 200-Period SMA Trend Filter implementation
+- **F-2**: Breakout entry trigger logic
+- **F-3**: Dip buy entry trigger logic
+- **F-4**: Configurable exit strategy (ATR Trail vs Aggressive)
+- **R-1**: ATR-based position sizing
+- **R-2**: Hard stop loss enforcement
+- **UI-1**: Clear on-chart signal visualization
