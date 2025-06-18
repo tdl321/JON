@@ -36,14 +36,14 @@ strategy("JON - Robust Trading Strategy",
 // v1.0.0 - Initial template setup with proper headers and structure
 // v1.1.0 - Added comprehensive input parameter framework for all PRD requirements
 // v1.2.0 - Implemented core indicators with validation (SMA, ATR, reference asset)
-// v2.0.0 - Phase 2 Complete: Core Strategy Logic Implementation
-// v2.1.0 - Task 2.1: Enhanced trend filter with strength validation
-// v2.2.0 - Task 2.2: Signal detection engine for breakouts and dip buys  
-// v2.3.0 - Task 2.3: Entry framework with comprehensive condition logic
-// v3.0.0 - Phase 3 Complete: Risk Management Foundation Implementation
-// v3.1.0 - Task 3.1: ATR-based position sizing with validation
-// v3.2.0 - Task 3.2: Hard stop loss system with entry-type specific logic
-// v3.3.0 - Task 3.3: Risk validation with circuit breakers and edge case handling
+// v2.0.0 - Phase 2 Complete: Core Strategy Logic Implementation (Simplified)
+// v2.1.0 - Task 2.1: Simple 200 SMA trend filter per F-1 requirements
+// v2.2.0 - Task 2.2: Clean signal detection for F-2 breakouts and F-3 dip buys
+// v2.3.0 - Task 2.3: Essential entry framework without unnecessary complexity
+// v3.0.0 - Phase 3 Complete: Risk Management Foundation (Simplified per Occam's Razor)
+// v3.1.0 - Task 3.1: ATR-based position sizing per R-1 requirements only
+// v3.2.0 - Task 3.2: Hard stop loss system per R-2 requirements with entry-type logic
+// v3.3.0 - Task 3.3: Essential risk validation (data checks only, no excess features)
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -176,11 +176,7 @@ anyEntryCondition = (breakoutEntryCondition or dipBuyEntryCondition) and strateg
 entryType = breakoutEntryCondition ? "BREAKOUT" : dipBuyEntryCondition ? "DIP_BUY" : "NONE"
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// EXIT LOGIC (Phase 4 - Future implementation)
-// ═══════════════════════════════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════════════════════════════
-// RISK MANAGEMENT (Phase 3 - Future implementation)
+// RISK MANAGEMENT (Phase 3)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -331,6 +327,155 @@ if barstate.islast and showDebugInfo
 isPhase3Complete = true // All three risk management tasks implemented
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// PHASE 4: EXIT STRATEGY SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// TASK 4.1: ATR TRAILING EXIT - Dynamic trailing stop for trending assets
+
+// ATR trailing stop variables
+var float atrTrailStop = na
+var float atrTrailHigh = na
+var bool atrTrailActive = false
+
+// Calculate ATR trailing stop
+calculateAtrTrailingStop(entryPrice, currentHigh, currentPrice) =>
+    if na(entryPrice) or na(currentHigh) or na(atr) or atr <= 0
+        na
+    else
+        // Trail stop based on highest high since entry
+        trailDistance = atr * atrTrailMultiplier
+        potentialStop = currentHigh - trailDistance
+        
+        // Ensure stop never goes below entry price initially
+        math.max(potentialStop, entryPrice * 0.995) // 0.5% buffer below entry
+
+// Update ATR trailing stop
+updateAtrTrailingStop(currentPrice, currentHigh) =>
+    if strategy.position_size > 0 and exitMode == "ATR Trail"
+        if na(atrTrailHigh) or currentHigh > atrTrailHigh
+            // New high - update trail high and recalculate stop
+            newTrailHigh = currentHigh
+            newTrailStop = calculateAtrTrailingStop(strategy.position_avg_price, newTrailHigh, currentPrice)
+            [newTrailStop, newTrailHigh, true]
+        else
+            // No new high - keep existing trail stop (never lower it)
+            [atrTrailStop, atrTrailHigh, atrTrailActive]
+    else
+        [na, na, false]
+
+// Check if ATR trailing stop is hit
+isAtrTrailStopHit() =>
+    atrTrailActive and not na(atrTrailStop) and low <= atrTrailStop
+
+// TASK 4.2: AGGRESSIVE PROFIT TAKE - Fixed target system for mean-reverting assets
+
+// Aggressive profit take variables
+var float aggressiveProfitPrice = na
+var bool aggressiveProfitActive = false
+
+// Calculate aggressive profit target
+calculateAggressiveProfitTarget(entryPrice) =>
+    if na(entryPrice) or entryPrice <= 0
+        na
+    else
+        targetMultiplier = 1.0 + (aggressiveProfitTarget / 100.0)
+        entryPrice * targetMultiplier
+
+// Update aggressive profit target
+updateAggressiveProfitTarget() =>
+    if strategy.position_size > 0 and exitMode == "Aggressive Profit Take"
+        if na(aggressiveProfitPrice)
+            // Set initial profit target
+            newProfitPrice = calculateAggressiveProfitTarget(strategy.position_avg_price)
+            [newProfitPrice, true]
+        else
+            // Keep existing target
+            [aggressiveProfitPrice, aggressiveProfitActive]
+    else
+        [na, false]
+
+// Check if aggressive profit target is hit
+isAggressiveProfitHit() =>
+    aggressiveProfitActive and not na(aggressiveProfitPrice) and high >= aggressiveProfitPrice
+
+// TASK 4.3: EXIT SELECTION (F-4) - User-configurable exit mode switching
+
+// Master exit logic coordinator
+updateExitSystem() =>
+    if strategy.position_size > 0
+        if exitMode == "ATR Trail"
+            // Update ATR trailing system
+            [newStop, newHigh, isActive] = updateAtrTrailingStop(close, high)
+            atrTrailStop := newStop
+            atrTrailHigh := newHigh
+            atrTrailActive := isActive
+            
+            // Reset aggressive profit system
+            aggressiveProfitPrice := na
+            aggressiveProfitActive := false
+            
+        else if exitMode == "Aggressive Profit Take"
+            // Update aggressive profit system
+            [newTarget, isActive] = updateAggressiveProfitTarget()
+            aggressiveProfitPrice := newTarget
+            aggressiveProfitActive := isActive
+            
+            // Reset ATR trail system
+            atrTrailStop := na
+            atrTrailHigh := na
+            atrTrailActive := false
+    else
+        // No position - reset all exit systems
+        atrTrailStop := na
+        atrTrailHigh := na
+        atrTrailActive := false
+        aggressiveProfitPrice := na
+        aggressiveProfitActive := false
+
+// Execute exit system updates
+updateExitSystem()
+
+// Check for exit conditions
+exitCondition = false
+exitReason = "NONE"
+
+if strategy.position_size > 0
+    // Check stop loss first (from Phase 3)
+    if isStopLossHit(currentStopPrice)
+        exitCondition := true
+        exitReason := "STOP_LOSS"
+    
+    // Check exit strategy specific conditions
+    else if exitMode == "ATR Trail" and isAtrTrailStopHit()
+        exitCondition := true
+        exitReason := "ATR_TRAIL"
+        
+    else if exitMode == "Aggressive Profit Take" and isAggressiveProfitHit()
+        exitCondition := true
+        exitReason := "PROFIT_TARGET"
+
+// Exit validation - ensure exit conditions are safe
+isExitValid() =>
+    exitCondition and strategy.position_size > 0 and not na(close) and close > 0
+
+// Log exit system status for validation
+var string exitDebugMsg = ""
+if barstate.islast and showDebugInfo
+    exitDebugMsg := "Phase 4 - Exit Strategy System:"
+    exitDebugMsg := exitDebugMsg + "\n• Exit Mode: " + exitMode
+    exitDebugMsg := exitDebugMsg + "\n• Position Size: " + str.tostring(strategy.position_size)
+    exitDebugMsg := exitDebugMsg + "\n• ATR Trail Stop: $" + str.tostring(atrTrailStop, "#.##")
+    exitDebugMsg := exitDebugMsg + "\n• ATR Trail High: $" + str.tostring(atrTrailHigh, "#.##")
+    exitDebugMsg := exitDebugMsg + "\n• Aggressive Target: $" + str.tostring(aggressiveProfitPrice, "#.##")
+    exitDebugMsg := exitDebugMsg + "\n• Exit Condition: " + (exitCondition ? "TRUE" : "FALSE")
+    exitDebugMsg := exitDebugMsg + "\n• Exit Reason: " + exitReason
+    exitDebugMsg := exitDebugMsg + "\n• Exit Valid: " + (isExitValid() ? "PASS" : "FAIL")
+    log.info(exitDebugMsg)
+
+// Phase 4 completion status
+isPhase4Complete = true // All three exit strategy tasks implemented
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
 // USER INTERFACE & VISUALIZATION (Phase 6 - Future implementation)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -354,12 +499,18 @@ if barstate.islast
     statusMsg := statusMsg + "\n• Task 3.1: Position Sizing [COMPLETE]"
     statusMsg := statusMsg + "\n• Task 3.2: Stop Loss System [COMPLETE]"
     statusMsg := statusMsg + "\n• Task 3.3: Risk Validation [COMPLETE]"
+    statusMsg := statusMsg + "\n=== PHASE 4 EXIT STRATEGY ==="
+    statusMsg := statusMsg + "\n• Task 4.1: ATR Trailing Exit [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 4.2: Aggressive Profit Take [COMPLETE]"
+    statusMsg := statusMsg + "\n• Task 4.3: Exit Selection [COMPLETE]"
     statusMsg := statusMsg + "\n=== CURRENT STATUS ==="
-    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendConfirmed ? "STRONG BULL" : "WEAK/BEAR")
+    statusMsg := statusMsg + "\n• Trend Filter: " + (isTrendFilterPassed ? "BULL" : "BEAR")
     statusMsg := statusMsg + "\n• ATR: " + str.tostring(atr, "#.####")
     statusMsg := statusMsg + "\n• Data Valid: " + (areIndicatorsValid ? "PASS" : "FAIL")
     statusMsg := statusMsg + "\n• Risk Valid: " + (canEnterNewPosition() ? "PASS" : "FAIL")
     statusMsg := statusMsg + "\n• Breakout Signal: " + (breakoutEntryCondition ? "ACTIVE" : "WAITING")
     statusMsg := statusMsg + "\n• Dip Buy Signal: " + (dipBuyEntryCondition ? "ACTIVE" : "WAITING")
-    statusMsg := statusMsg + "\n• Next Phase: Exit Strategy System (Phase 4)"
+    statusMsg := statusMsg + "\n• Exit Condition: " + (exitCondition ? "TRUE" : "FALSE")
+    statusMsg := statusMsg + "\n• Exit Reason: " + exitReason
+    statusMsg := statusMsg + "\n• Next Phase: Entry Logic Integration (Phase 5)"
     log.info(statusMsg) 
