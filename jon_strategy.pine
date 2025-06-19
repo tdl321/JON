@@ -1,4 +1,4 @@
-//@version=5
+//@version=6
 strategy("JON - Robust Trading Strategy",
      shorttitle="JON",
      overlay=true,
@@ -78,7 +78,9 @@ isDataValid = not na(close) and not na(atr) and atr > 0 and strategy.equity > 0
 
 // --- REFERENCE ASSET INDICATORS ---
 referenceClose = useReferenceAsset ? request.security(referenceSymbol, timeframe.period, close) : na
-referenceSma = useReferenceAsset and not na(referenceClose) ? ta.sma(referenceClose, trendSmaLength) : na
+// Fix: Extract ta.sma call from conditional scope for consistency
+referenceSmaValue = useReferenceAsset and not na(referenceClose) ? ta.sma(referenceClose, trendSmaLength) : na
+referenceSma = referenceSmaValue
 isReferenceBullish = not useReferenceAsset or (not na(referenceSma) and referenceClose > referenceSma)
 
 // --- FINAL TREND FILTER VALIDATION ---
@@ -101,7 +103,9 @@ if (enableBreakoutEntry)
             validRecentHigh := currentHigh
             validRecentHighAge := i
 isRecentHighValid = not na(validRecentHigh)
-breakoutEntryCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and isRecentHighValid and ta.crossover(close, validRecentHigh)
+// Fix: Extract ta.crossover call from conditional scope for consistency
+crossoverSignal = ta.crossover(close, validRecentHigh)
+breakoutEntryCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and isRecentHighValid and crossoverSignal
 
 // --- F-3: DIP BUY ENTRY ---
 recentLow = ta.lowest(low, dipBuyLookback)
@@ -115,6 +119,7 @@ dipBuyEntryCondition = enableDipBuyEntry and isTrendFilterPassed and isDataValid
 // --- R-1: POSITION SIZING ---
 riskAmountDollars = strategy.equity * (riskPercent / 100.0)
 
+// Fixed function definition for v6 - removed 'method' keyword
 calculatePositionSize(entryPrice, stopLossPrice) =>
     if (na(entryPrice) or na(stopLossPrice) or riskAmountDollars <= 0)
         0.0
@@ -123,14 +128,18 @@ calculatePositionSize(entryPrice, stopLossPrice) =>
         riskPerShare > 0 ? riskAmountDollars / riskPerShare : 0.0
 
 // --- R-2: STOP LOSS ---
+// Fixed function definition for v6 - removed 'method' keyword
 calculateInitialStopLoss(entryPrice, entryType) =>
     stopPrice = entryPrice - (atr * stopLossMultiplier)
+    // Fix: Extract ta.lowest calls from conditional scope for consistency
+    recentSwingLow = ta.lowest(low, 10) * 0.995
+    recentDipLow = recentLow * 0.99
     if entryType == "BREAKOUT"
         // For breakouts, ensure stop is below a recent swing low
-        stopPrice := math.min(stopPrice, ta.lowest(low, 10) * 0.995)
+        stopPrice := math.min(stopPrice, recentSwingLow)
     else if entryType == "DIP_BUY"
         // For dip buys, ensure stop is below the identified recent low
-        stopPrice := math.min(stopPrice, recentLow * 0.99)
+        stopPrice := math.min(stopPrice, recentDipLow)
     stopPrice
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
@@ -204,9 +213,11 @@ failedBreakoutExit = false
 if (enableOpportunisticExit and strategy.position_size > 0 and isBreakoutPosition and not na(breakoutEntryPrice) and not na(breakoutEntryBar))
     barsSinceEntry = bar_index - breakoutEntryBar
     
+    // Fix: Extract ta.highest call from conditional scope for consistency
+    highSinceEntry = ta.highest(high, barsSinceEntry)
+    
     // F-5: Exit if breakout fails to make new high within timeout
     if barsSinceEntry >= failedBreakoutBars
-        highSinceEntry = ta.highest(high, barsSinceEntry)
         if highSinceEntry <= breakoutEntryPrice * 1.005 // No meaningful follow-through (0.5% threshold)
             failedBreakoutExit := true
     
@@ -244,20 +255,41 @@ plot(showStopLevels and strategy.position_size > 0 ? currentStopPrice : na, "Sto
 plot(showStopLevels and not na(aggressiveProfitPrice) ? aggressiveProfitPrice : na, "Profit Target", color = color.new(color.lime, 40), style = plot.style_linebr, linewidth = 2)
 
 // --- ENTRY/EXIT LABELS ---
-// FIX: Tied label logic directly to strategy.position_size changes for 100% reliability.
+// Fixed: Moved plotshape calls to global scope with proper conditional logic
+// Track entry and exit events with proper variable scope
+var bool showBreakoutEntry = false
+var bool showDipBuyEntry = false
+var bool showExit = false
+var bool wasFailedBreakout = false
 var string entryType = ""
+
+// Update label flags based on position changes
 if strategy.position_size > 0 and strategy.position_size[1] == 0
+    // Position just opened - determine entry type
     entryType := strategy.opentrades.entry_id(strategy.opentrades - 1)
     if str.contains(entryType, "Breakout")
-        plotshape(true, title="Breakout Entry", location=location.belowbar, color=color.new(color.blue, 0), style=shape.labelup, size=size.small, text="BREAKOUT\nENTRY", textcolor=color.white)
+        showBreakoutEntry := true
+        showDipBuyEntry := false
     else if str.contains(entryType, "Dip Buy")
-        plotshape(true, title="Dip Buy Entry", location=location.belowbar, color=color.new(color.green, 0), style=shape.labelup, size=size.small, text="DIP BUY\nENTRY", textcolor=color.white)
+        showBreakoutEntry := false
+        showDipBuyEntry := true
+    showExit := false
+else if strategy.position_size == 0 and strategy.position_size[1] > 0
+    // Position just closed
+    showBreakoutEntry := false
+    showDipBuyEntry := false
+    showExit := true
+    wasFailedBreakout := failedBreakoutExit[1]
+else
+    // No position change
+    showBreakoutEntry := false
+    showDipBuyEntry := false
+    showExit := false
 
-if strategy.position_size == 0 and strategy.position_size[1] > 0
-    // Determine exit type for labeling
-    exitLabel = failedBreakoutExit[1] ? "FAILED\nBREAKOUT" : "EXIT"
-    exitColor = failedBreakoutExit[1] ? color.new(color.orange, 0) : color.new(color.purple, 0)
-    plotshape(true, title="Exit", location=location.abovebar, color=exitColor, style=shape.labeldown, size=size.small, text=exitLabel, textcolor=color.white)
+// Plot shapes in global scope with conditional display
+plotshape(showBreakoutEntry, title="Breakout Entry", location=location.belowbar, color=color.new(color.blue, 0), style=shape.labelup, size=size.small, text="BREAKOUT\nENTRY", textcolor=color.white)
+plotshape(showDipBuyEntry, title="Dip Buy Entry", location=location.belowbar, color=color.new(color.green, 0), style=shape.labelup, size=size.small, text="DIP BUY\nENTRY", textcolor=color.white)
+plotshape(showExit, title="Exit", location=location.abovebar, color=wasFailedBreakout ? color.new(color.orange, 0) : color.new(color.purple, 0), style=shape.labeldown, size=size.small, text=wasFailedBreakout ? "FAILED\nBREAKOUT" : "EXIT", textcolor=color.white)
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                        U I - 2 :   P E R F O R M A N C E   T A B L E                        |
