@@ -573,15 +573,19 @@ plotshape(showDebugInfo and trailStartActivated and strategy.position_size > 0,
 
 // Track position entry time for box anchoring
 var int positionStartBar = na
+var int positionEndBar = na
 var box riskBox = na
 var box rewardBox = na
+var bool boxesCreated = false
 
 // Update box anchoring when position opens
 if strategy.position_size > 0 and strategy.position_size[1] == 0
     positionStartBar := bar_index
+    positionEndBar := bar_index + 50  // Fixed width boxes
+    boxesCreated := false
 
-// Update or create boxes when in position
-if strategy.position_size > 0 and not na(positionStartBar)
+// Create boxes only once when position opens (not on every bar)
+if strategy.position_size > 0 and not na(positionStartBar) and not boxesCreated
     entryPrice = strategy.position_avg_price
     stopPrice = currentStopPrice
     
@@ -592,39 +596,15 @@ if strategy.position_size > 0 and not na(positionStartBar)
     if exitMode == "Aggressive Profit Take" and not na(aggressiveProfitPrice)
         rewardTarget := aggressiveProfitPrice
     
-    // Delete existing boxes to avoid overlap
-    if not na(riskBox)
-        box.delete(riskBox)
-    if not na(rewardBox)
-        box.delete(rewardBox)
-    
-    // Create risk zone box (entry to stop loss)
+    // Create risk zone box (entry to stop loss) - only once
     if not na(stopPrice)
-        riskBox := box.new(
-            left=positionStartBar, 
-            top=entryPrice, 
-            right=bar_index + 10, 
-            bottom=stopPrice,
-            bgcolor=color.new(color.red, 85),
-            border_color=color.new(color.red, 60),
-            border_width=1,
-            text="Risk Zone\n" + str.tostring(math.abs((entryPrice - stopPrice) / entryPrice * 100), "#.#") + "%",
-            text_color=color.white,
-            text_size=size.small)
+        riskBox := box.new(positionStartBar, math.min(entryPrice, stopPrice), positionEndBar, math.max(entryPrice, stopPrice), bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 60), border_width=1, text="Risk Zone\n" + str.tostring(math.abs((entryPrice - stopPrice) / entryPrice * 100), "#.#") + "%", text_color=color.white, text_size=size.small)
     
-    // Create reward zone box (entry to target)
+    // Create reward zone box (entry to target) - only once
     if not na(rewardTarget)
-        rewardBox := box.new(
-            left=positionStartBar, 
-            top=rewardTarget, 
-            right=bar_index + 10, 
-            bottom=entryPrice,
-            bgcolor=color.new(color.green, 85),
-            border_color=color.new(color.green, 60),
-            border_width=1,
-            text="Reward Zone\n" + str.tostring((rewardTarget - entryPrice) / entryPrice * 100, "#.#") + "%",
-            text_color=color.white,
-            text_size=size.small)
+        rewardBox := box.new(positionStartBar, math.min(entryPrice, rewardTarget), positionEndBar, math.max(entryPrice, rewardTarget), bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 60), border_width=1, text="Reward Zone\n" + str.tostring((rewardTarget - entryPrice) / entryPrice * 100, "#.#") + "%", text_color=color.white, text_size=size.small)
+    
+    boxesCreated := true
 
 // Clean up boxes when position closes
 if strategy.position_size == 0 and strategy.position_size[1] > 0
@@ -635,6 +615,8 @@ if strategy.position_size == 0 and strategy.position_size[1] > 0
         box.delete(rewardBox)
         rewardBox := na
     positionStartBar := na
+    positionEndBar := na
+    boxesCreated := false
 
 // Subtle background when not in position
 bgcolor(strategy.position_size == 0 ? color.new(color.white, 98) : na)
