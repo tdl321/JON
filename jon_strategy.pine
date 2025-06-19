@@ -1,12 +1,13 @@
+// © 2025 JON Systems
 //@version=6
-strategy("JON - Robust Trading Strategy",
+strategy("JON - Turtle Trading Strategy",
      shorttitle="JON",
      overlay=true,
-     pyramiding=3,
+     pyramiding=4,
      // FIX: Changed default_qty_type to 'fixed' to allow our manual position sizing to work.
      // The original 'percent_of_equity' setting overrode all our custom risk logic.
      default_qty_type=strategy.fixed,
-     initial_capital=100000,
+     initial_capital=40000,
      currency=currency.USD,
      commission_type=strategy.commission.percent,
      commission_value=0.1)
@@ -22,16 +23,19 @@ strategy("JON - Robust Trading Strategy",
 // - Sidestep Bear Markets: Preserves capital during major downturns
 // - Low-Frequency Investing: High-quality signals, typically <1 trade per month per asset
 //
-// PRIMARY ENHANCEMENTS (Latest Update):
+// PRIMARY ENHANCEMENTS (Latest Update - TURTLE METHODOLOGY):
 // - Monthly Timeframe Triggers: Both dip buy and breakout entries use monthly highs/lows
 // - Precise Age Requirements: Min/max age validation for monthly reference points
 // - Advanced Trailing System: Profit-activated trailing with "on touch high" option
-// - Enhanced Correlation Logic: T1/T2 correlation features for entries and stops
-// - Reward:Risk Ratio: 25:1 target with sophisticated stop management
+// - Enhanced Correlation Logic: Unit correlation features for entries and stops
+// - Hybrid Unit System: 1% risk per unit, max 4% total trade risk (4 units)
+// - Dynamic ATR Adjustment: Volatility-responsive trailing multipliers (4-zone model)
+// - Unit Spacing: 1×ATR spacing between units for optimal balance
+// - Risk Management: Balanced risk controls with modern volatility considerations
 //
 // Primary Assets: BTCUSD, NDX/QQQ, XAUUSD (with CRYPTOCAP:TOTAL reference filter)
 // Strategy Type: Monthly trend-following with dual entry system and profit-activated trailing
-// Risk Management: ATR-based position sizing with correlated stops and 25:1 R:R target
+// Risk Management: Turtle unit system with volatility-based sizing and strict risk controls
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                  I N P U T   P A R A M E T E R S                           |
@@ -45,10 +49,16 @@ referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", grou
 
 // --- F-2: BREAKOUT ENTRY SETTINGS ---
 enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakout Entry (F-2)")
+// Traditional monthly breakout pathway
 breakoutTimeframe = input.string("1M", "Breakout Timeframe (Monthly)", options = ["1D", "1W", "1M"], group = "Breakout Entry (F-2)")
 breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1, maxval = 60, group = "Breakout Entry (F-2)")
 breakoutMinAgeDays = input.int(20, "Min Age of Crossed High (days)", minval = 1, maxval = 100, group = "Breakout Entry (F-2)")
 breakoutMaxAgeDays = input.int(200, "Max Age of Crossed High (days)", minval = 5, maxval = 500, group = "Breakout Entry (F-2)")
+// Volume spike pathway (alternative trigger)
+enableVolumeSpikeTrigger = input.bool(true, "Enable Volume Spike Trigger", group = "Breakout Entry (F-2)")
+volumeThresholdPercent = input.float(50.0, "Volume Spike Threshold %", minval = 10.0, maxval = 200.0, step = 10.0, group = "Breakout Entry (F-2)")
+volumeLookbackPeriod = input.int(20, "Volume Average Period", minval = 5, maxval = 50, group = "Breakout Entry (F-2)")
+volumeSpikeMinMove = input.float(2.0, "Min Price Move % for Volume Trigger", minval = 0.1, maxval = 5.0, step = 0.1, group = "Breakout Entry (F-2)")
 
 // --- F-3: DIP BUY ENTRY SETTINGS ---
 enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy Entry (F-3)")
@@ -58,37 +68,51 @@ dipMinAgeDays = input.int(15, "Min Age of Crossed Low (days)", minval = 1, maxva
 dipMaxAgeDays = input.int(90, "Max Age of Crossed Low (days)", minval = 5, maxval = 200, group = "Dip Buy Entry (F-3)")
 
 // --- F-4: EXIT STRATEGY SETTINGS ---
-exitMode = input.string("ATR Trail", "Exit Strategy Mode", options = ["ATR Trail", "Aggressive Profit Take"], group = "Exit Strategy (F-4)")
-atrTrailMultiplier = input.float(20.0, "Trailing Distance x ATR", minval = 0.5, maxval = 50.0, step = 0.1, group = "Exit Strategy (F-4)")
-aggressiveProfitTarget = input.float(10.0, "Aggressive Profit Target %", minval = 1.0, maxval = 50.0, step = 0.5, group = "Exit Strategy (F-4)")
+exitMode = input.string("ATR Trail", "Exit Strategy Mode", options = ["ATR Trail"], group = "Exit Strategy (F-4)")
+atrTrailMultiplier = input.float(5.0, "Trailing Distance x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Exit Strategy (F-4)")
 trailStartProfitMultiplier = input.float(5.0, "Trailing Start at Profit x ATR", minval = 1.0, maxval = 20.0, step = 0.1, group = "Exit Strategy (F-4)")
-trailOnTouchHigh = input.bool(true, "Trail Start on Touch High", group = "Exit Strategy (F-4)")
+trailOnTouchHigh = input.bool(false, "Trail Start on Touch High", group = "Exit Strategy (F-4)")
+enableDynamicTrail = input.bool(true, "Enable Dynamic Trail Adjustment", group = "Exit Strategy (F-4)")
+volatilityLookback = input.int(14, "Volatility Reference Period", minval = 10, maxval = 50, group = "Exit Strategy (F-4)")
 
 // --- F-5: OPPORTUNISTIC EXIT SETTINGS ---
 enableOpportunisticExit = input.bool(true, "Enable Opportunistic Exit", group = "Opportunistic Exit (F-5)")
-failedBreakoutBars = input.int(10, "Failed Breakout Timeout (bars)", minval = 3, maxval = 50, group = "Opportunistic Exit (F-5)")
+failedBreakoutBars = input.int(5, "Failed Breakout Timeout (bars)", minval = 3, maxval = 50, group = "Opportunistic Exit (F-5)")
 
 // --- R-1 & R-2: RISK MANAGEMENT SETTINGS ---
-riskPercent = input.float(3.0, "Risk Per Trade %", minval = 0.1, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+unitRiskPercent = input.float(1.0, "Risk Per Unit %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+maxTradeRiskPercent = input.float(4.0, "Max Total Trade Risk %", minval = 1.0, maxval = 8.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 atrLength = input.int(14, "ATR Length", minval = 5, maxval = 50, group = "Risk Management (R-1, R-2)")
-stopLossMultiplier = input.float(5.0, "Initial Stop Loss x ATR", minval = 0.5, maxval = 20.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+stopLossMultiplier = input.float(5.0, "Initial Stop Loss x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 rewardRiskRatio = input.float(25.0, "Reward:Risk Ratio", minval = 1.0, maxval = 50.0, step = 0.5, group = "Risk Management (R-1, R-2)")
-correlateT1 = input.bool(true, "Correlate T1 Entry", group = "Risk Management (R-1, R-2)")
-correlateT2 = input.bool(true, "Correlate T2 Entry", group = "Risk Management (R-1, R-2)")
-correlateT1TrailSL = input.bool(true, "Correlate T1 Trail SL", group = "Risk Management (R-1, R-2)")
+correlateUnit1 = input.bool(true, "Correlate Unit 1 Entry", group = "Risk Management (R-1, R-2)")
+correlateAdditionalUnits = input.bool(true, "Correlate Additional Units", group = "Risk Management (R-1, R-2)")
+correlateUnit1TrailSL = input.bool(true, "Correlate Unit 1 Trail SL", group = "Risk Management (R-1, R-2)")
 minSLDist = input.bool(true, "Min SL Distance", group = "Risk Management (R-1, R-2)")
 
-// --- R-4: PYRAMIDING ENGINE SETTINGS ---
-enablePyramiding = input.bool(true, "Enable Tiered Pyramiding", group = "Pyramiding Engine (R-4)")
-maxPyramidEntries = input.int(2, "Max Pyramid Tiers (Total: 3)", minval = 1, maxval = 3, group = "Pyramiding Engine (R-4)")
-minTierSpacing = input.float(2.0, "Min Tier Price Spacing %", minval = 0.5, maxval = 10.0, step = 0.5, group = "Pyramiding Engine (R-4)")
-trailSLOnPyramiding = input.bool(true, "Trail SL on Pyramiding T2 Entry", group = "Pyramiding Engine (R-4)")
+// --- R-4: PYRAMIDING ENGINE SETTINGS (TURTLE UNITS) ---
+enablePyramiding = input.bool(true, "Enable Unit Pyramiding", group = "Pyramiding Engine (R-4)")
+maxPyramidEntries = input.int(3, "Max Additional Units (Total: 4)", minval = 1, maxval = 4, group = "Pyramiding Engine (R-4)")
+pyramidSpacingATR = input.float(1.0, "Unit Spacing (ATR multiplier)", minval = 0.5, maxval = 2.0, step = 0.5, group = "Pyramiding Engine (R-4)")
+trailSLOnPyramiding = input.bool(true, "Trail SL on Unit Additions", group = "Pyramiding Engine (R-4)")
 
 // --- UI-1 & UI-2: DISPLAY SETTINGS ---
 showTrendSma = input.bool(true, "Show 200 SMA", group = "Display Settings (UI-1, UI-2)")
 showStopLevels = input.bool(true, "Show Stop Loss Levels", group = "Display Settings (UI-1, UI-2)")
 showTradeLabels = input.bool(true, "Show Trade Entry/Exit Labels", group = "Display Settings (UI-1, UI-2)")
 showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings (UI-1, UI-2)")
+
+// --- B-3: GLOBAL DEFAULT PRESET SYSTEM ---
+assetPreset = input.string("Global Default", "Asset Preset (B-3)", options = ["Global Default", "Crypto (BTC)", "Indices (NDX/QQQ)", "Metals (Gold)"], 
+                          group = "Strategy Configuration", tooltip = "Select optimized preset or use universal Global Default")
+
+// B-3 Implementation: Asset-specific parameter adjustments (explicitly justified)
+adjustedUnitRiskPercent = assetPreset == "Crypto (BTC)" ? unitRiskPercent * 0.8 : assetPreset == "Indices (NDX/QQQ)" ? unitRiskPercent * 1.2 : assetPreset == "Metals (Gold)" ? unitRiskPercent * 1.0 : unitRiskPercent
+
+// NOTE: Global Default uses base parameters. Deviations justified by:
+// - Crypto: Higher volatility requires wider trails, lower risk
+// - Indices: 401k flows create mean reversion, tighter trails, higher risk tolerance  
+// - Metals: Longer-term trends, moderate adjustments
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                    C O R E   I N D I C A T O R S                           |
@@ -99,6 +123,23 @@ trendSma = ta.sma(close, trendSmaLength)
 isTrendBullish = not trendFilterEnabled or close > trendSma
 atr = ta.atr(atrLength)
 isDataValid = not na(close) and not na(atr) and atr > 0 and strategy.equity > 0
+
+// F-4A: Enhanced Dynamic ATR Multiplier Calculation (after atr is defined)
+baseAdjustedMultiplier = assetPreset == "Crypto (BTC)" ? atrTrailMultiplier * 1.5 : assetPreset == "Indices (NDX/QQQ)" ? atrTrailMultiplier * 0.7 : assetPreset == "Metals (Gold)" ? atrTrailMultiplier * 1.2 : atrTrailMultiplier
+
+// Dynamic volatility adjustment based on advice document
+volatilityAdjustment = 1.0
+if enableDynamicTrail
+    // Calculate current ATR relative to average ATR (advice document method)
+    avgAtr = ta.sma(atr, volatilityLookback)
+    volatilityRatio = avgAtr > 0 ? atr / avgAtr : 1.0
+    
+    // Apply 4-zone volatility model from advice document
+    volatilityAdjustment := volatilityRatio > 1.2 ? 1.3 :  // High volatility: wider trail
+                           volatilityRatio < 0.8 ? 0.7 :   // Low volatility: tighter trail
+                           1.0                              // Normal volatility: unchanged
+
+adjustedAtrTrailMultiplier = baseAdjustedMultiplier * volatilityAdjustment
 
 // --- REFERENCE ASSET INDICATORS ---
 referenceClose = useReferenceAsset ? request.security(referenceSymbol, timeframe.period, close) : na
@@ -155,7 +196,21 @@ if isRecentHighValid
             break
     crossoverSignal := crossedRecently and close > validMonthlyHigh
 
-breakoutEntryCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and isRecentHighValid and crossoverSignal
+// F-2: Traditional monthly breakout pathway
+traditionalBreakoutCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and isRecentHighValid and crossoverSignal
+
+// F-2: Volume spike breakout pathway (alternative trigger)
+volumeSpikeBreakoutCondition = false
+if enableVolumeSpikeTrigger and enableBreakoutEntry and isTrendFilterPassed and isDataValid
+    avgVolume = ta.sma(volume, volumeLookbackPeriod)
+    currentVolumeIncrease = avgVolume > 0 ? ((volume - avgVolume) / avgVolume) * 100 : 0
+    priceMove = close > close[1] ? ((close - close[1]) / close[1]) * 100 : 0
+    
+    // Volume spike with minimum price movement (above 200 SMA)
+    volumeSpikeBreakoutCondition := currentVolumeIncrease >= volumeThresholdPercent and priceMove >= volumeSpikeMinMove and close > trendSma
+
+// Combined breakout condition (OR logic - either pathway can trigger)
+breakoutEntryCondition = traditionalBreakoutCondition or volumeSpikeBreakoutCondition
 
 // --- F-3: DIP BUY ENTRY ---
 // Get monthly lows data
@@ -205,15 +260,18 @@ dipBuyEntryCondition = enableDipBuyEntry and isTrendFilterPassed and isDataValid
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // --- R-1: POSITION SIZING ---
-riskAmountDollars = strategy.equity * (riskPercent / 100.0)
+unitRiskAmountDollars = strategy.equity * (adjustedUnitRiskPercent / 100.0)
 
-// Fixed function definition for v6 - removed 'method' keyword
-calculatePositionSize(entryPrice, stopLossPrice) =>
-    if (na(entryPrice) or na(stopLossPrice) or riskAmountDollars <= 0)
+// Fixed function definition for v6 - removed 'method' keyword (TURTLE UNIT SIZING)
+calculateUnitSize(entryPrice, stopLossPrice) =>
+    if (na(entryPrice) or na(stopLossPrice) or unitRiskAmountDollars <= 0)
         0.0
     else
         riskPerShare = math.abs(entryPrice - stopLossPrice)
-        riskPerShare > 0 ? riskAmountDollars / riskPerShare : 0.0
+        unitValue = riskPerShare > 0 ? unitRiskAmountDollars / riskPerShare : 0.0
+        // R-1 Validation: Max 95% of equity, Min $100
+        maxUnitValue = strategy.equity * 0.95
+        math.min(unitValue, maxUnitValue / entryPrice) * entryPrice >= 100 ? unitValue : 0.0
 
 // --- R-2: STOP LOSS ---
 // Enhanced stop loss calculation with correlation features
@@ -229,12 +287,12 @@ calculateInitialStopLoss(entryPrice, entryType) =>
     finalStopPrice = atrStopPrice
     
     if entryType == "BREAKOUT"
-        if correlateT1
-            // For correlated T1 breakouts, use stricter of ATR or swing low
+        if correlateUnit1
+            // For correlated Unit 1 breakouts, use looser of ATR or swing low for maximum breathing room
             finalStopPrice := math.min(atrStopPrice, recentSwingLow)
     else if entryType == "DIP_BUY"
-        if correlateT1
-            // For correlated T1 dip buys, use stricter of ATR or monthly low
+        if correlateUnit1
+            // For correlated Unit 1 dip buys, use looser of ATR or monthly low for maximum breathing room
             finalStopPrice := math.min(atrStopPrice, monthlyLowRef)
     
     // Apply minimum stop distance if enabled
@@ -251,15 +309,21 @@ calculateInitialStopLoss(entryPrice, entryType) =>
 var float currentStopPrice = na
 var float atrTrailStop = na
 var float atrTrailHigh = na
-var float aggressiveProfitPrice = na
 var bool trailStartActivated = false
 var float profitActivationLevel = na
+
+// Exit tracking variables
+var float initialStopPrice = na
 
 // --- F-4: ENHANCED EXIT SYSTEM UPDATE LOGIC ---
 if strategy.position_size > 0
     entryPrice = strategy.position_avg_price
     currentProfit = close - entryPrice
     profitInATR = currentProfit / atr
+    
+    // Initialize initial stop price tracking
+    if na(initialStopPrice)
+        initialStopPrice := currentStopPrice
     
     if exitMode == "ATR Trail"
         // Calculate profit activation level for trailing (only set once)
@@ -285,8 +349,8 @@ if strategy.position_size > 0
             if high > atrTrailHigh
                 atrTrailHigh := high
             
-            // Calculate new trailing stop
-            newTrailStop = atrTrailHigh - (atr * atrTrailMultiplier)
+            // Calculate new trailing stop using adjusted multiplier
+            newTrailStop = atrTrailHigh - (atr * adjustedAtrTrailMultiplier)
             
             // Ensure trailing stop never moves down and respects correlation settings
             if na(atrTrailStop)
@@ -294,26 +358,25 @@ if strategy.position_size > 0
             else
                 atrTrailStop := math.max(atrTrailStop, newTrailStop)
             
-            // Apply T1 trail correlation if enabled
-            if correlateT1TrailSL
+            // Apply Unit 1 trail correlation if enabled
+            if correlateUnit1TrailSL
                 atrTrailStop := math.max(atrTrailStop, currentStopPrice)
             
             currentStopPrice := math.max(currentStopPrice, atrTrailStop)
-            
-    else if exitMode == "Aggressive Profit Take"
-        if na(aggressiveProfitPrice)
-            aggressiveProfitPrice := entryPrice * (1 + aggressiveProfitTarget / 100)
+    
+    // Additional exit logic can be added here if needed
 else // No position open, reset all exit variables
     currentStopPrice := na
     atrTrailStop := na
     atrTrailHigh := na
-    aggressiveProfitPrice := na
     trailStartActivated := false
     profitActivationLevel := na
+    
+    // Reset exit variables
+    initialStopPrice := na
 
 // --- EXIT CONDITIONS ---
 stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and low <= currentStopPrice
-profitTargetHit = strategy.position_size > 0 and exitMode == "Aggressive Profit Take" and not na(aggressiveProfitPrice) and high >= aggressiveProfitPrice
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                             T R A D E   E X E C U T I O N   E N G I N E                      |
@@ -328,76 +391,82 @@ var bool isBreakoutPosition = false
 var int currentPyramidCount = 0
 var float lastPyramidPrice = na
 
-// --- ENTRY EXECUTION ---
+// --- ENTRY EXECUTION (TURTLE UNIT SYSTEM) ---
 if (strategy.position_size == 0 and isDataValid)
     float initialStop = na
-    float positionSize = na
+    float unitSize = na
     string entryId = ""
 
     if breakoutEntryCondition
         initialStop := calculateInitialStopLoss(close, "BREAKOUT")
-        positionSize := calculatePositionSize(close, initialStop)
-        entryId := "Breakout Long"
+        unitSize := calculateUnitSize(close, initialStop)
+        entryId := "Unit 1 Long"
         // Track breakout entry for F-5 opportunistic exit
         breakoutEntryPrice := close
         breakoutEntryBar := bar_index
         isBreakoutPosition := true
     else if dipBuyEntryCondition
         initialStop := calculateInitialStopLoss(close, "DIP_BUY")
-        positionSize := calculatePositionSize(close, initialStop)
-        entryId := "Dip Buy Long"
+        unitSize := calculateUnitSize(close, initialStop)
+        entryId := "Unit 1 Long"
         // Dip buy entries don't use opportunistic exit
         isBreakoutPosition := false
 
-    if positionSize > 0
-        strategy.entry(entryId, strategy.long, qty=positionSize)
+    if unitSize > 0
+        strategy.entry(entryId, strategy.long, qty=unitSize)
         currentStopPrice := initialStop // Set the initial hard stop
 
-// --- R-4: ENHANCED PYRAMIDING EXECUTION ---
+// --- R-4: TURTLE UNIT PYRAMIDING EXECUTION ---
 if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries)
-    // Calculate current unrealized profit in dollars
-    unrealizedProfitDollars = strategy.openprofit
+    // Calculate profit in N (ATR) terms from entry
+    entryPrice = strategy.position_avg_price
+    profitInN = (close - entryPrice) / atr
     
-    // Determine profit threshold needed for next tier
-    tierProfitRequired = (currentPyramidCount + 1) * (strategy.equity * riskPercent / 100)
+    // Determine ATR threshold for next unit (1×ATR spacing default)
+    nextUnitThreshold = (currentPyramidCount + 1) * pyramidSpacingATR
     
-    // Check if we have enough profit to fund the next tier
-    canAffordNextTier = unrealizedProfitDollars >= tierProfitRequired
+    // Check if we've reached the ATR threshold for next unit
+    atrThresholdMet = profitInN >= nextUnitThreshold
     
-    // Ensure we're not too close to last pyramid entry
-    priceDistanceOk = na(lastPyramidPrice) or math.abs(close - lastPyramidPrice) / lastPyramidPrice > (minTierSpacing / 100)
+    // Ensure we're at a new entry signal (don't add units on same signal)
+    priceDistanceOk = na(lastPyramidPrice) or math.abs(close - lastPyramidPrice) >= (atr * pyramidSpacingATR)
     
     // Check for new entry signals while in position
-    pyramidCondition = canAffordNextTier and priceDistanceOk and (breakoutEntryCondition or dipBuyEntryCondition)
+    pyramidCondition = atrThresholdMet and priceDistanceOk and (breakoutEntryCondition or dipBuyEntryCondition)
     
-    if pyramidCondition
-        // Apply T2 correlation logic for pyramid entries
+    // TURTLE RISK CHECK: Ensure we don't exceed max trade risk
+    currentTradeRisk = strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100
+    wouldExceedMaxRisk = currentTradeRisk + adjustedUnitRiskPercent > maxTradeRiskPercent
+    
+    if pyramidCondition and not wouldExceedMaxRisk
+        // Apply correlation logic for additional units
         entryType = isBreakoutPosition ? "BREAKOUT" : "DIP_BUY"
-        pyramidStopPrice = calculateInitialStopLoss(close, entryType)
+        unitStopPrice = calculateInitialStopLoss(close, entryType)
         
-        // Enhanced correlation for T2 entries
-        if correlateT2
-            // For T2 entries, ensure stop correlates with current position
-            pyramidStopPrice := math.max(pyramidStopPrice, currentStopPrice)
+        // Enhanced correlation for additional units
+        if correlateAdditionalUnits
+            // For additional units, ensure stop correlates with current position
+            unitStopPrice := math.max(unitStopPrice, currentStopPrice)
         
-        pyramidSize = calculatePositionSize(close, pyramidStopPrice) // Full risk size, same as initial entry
+        // Calculate unit size (same risk per unit as Unit 1)
+        unitSize = calculateUnitSize(close, unitStopPrice)
         
-        if pyramidSize > 0
-            pyramidId = "Tier " + str.tostring(currentPyramidCount + 2) // Tier 2, Tier 3, etc.
-            strategy.entry(pyramidId, strategy.long, qty=pyramidSize)
+        if unitSize > 0
+            unitId = "Unit " + str.tostring(currentPyramidCount + 2) // Unit 2, Unit 3, Unit 4
+            strategy.entry(unitId, strategy.long, qty=unitSize)
             currentPyramidCount := currentPyramidCount + 1
             lastPyramidPrice := close
             
-            // Update stop to protect pyramid entry with correlation
-            if correlateT2
-                currentStopPrice := math.max(currentStopPrice, pyramidStopPrice)
+            // Update stop to protect new unit with correlation
+            if correlateAdditionalUnits
+                currentStopPrice := math.max(currentStopPrice, unitStopPrice)
             else
-                currentStopPrice := pyramidStopPrice // Use new stop if not correlated
+                currentStopPrice := unitStopPrice // Use new stop if not correlated
             
-            // Update trailing stop logic for pyramid entries if enabled
+            // Update trailing stop logic for additional units if enabled
             if trailSLOnPyramiding and trailStartActivated
-                // Recalculate trailing stop to account for new entry
-                newTrailStop = atrTrailHigh - (atr * atrTrailMultiplier)
+                // Recalculate trailing stop to account for new unit using adjusted multiplier
+                newTrailStop = atrTrailHigh - (atr * adjustedAtrTrailMultiplier)
                 atrTrailStop := math.max(atrTrailStop, newTrailStop)
                 currentStopPrice := math.max(currentStopPrice, atrTrailStop)
 
@@ -415,7 +484,7 @@ if (enableOpportunisticExit and strategy.position_size > 0 and isBreakoutPositio
             failedBreakoutExit := true
     
     // F-5: Exit if close falls below entry with correlation consideration
-    exitThreshold = correlateT1 ? breakoutEntryPrice * 0.98 : breakoutEntryPrice * 0.97
+    exitThreshold = correlateUnit1 ? breakoutEntryPrice * 0.98 : breakoutEntryPrice * 0.97
     if close < exitThreshold
         failedBreakoutExit := true
     
@@ -424,15 +493,17 @@ if (enableOpportunisticExit and strategy.position_size > 0 and isBreakoutPositio
         failedBreakoutExit := true
 
 // --- EXIT EXECUTION ---
+var string exitReason = na
 if strategy.position_size > 0
     if failedBreakoutExit
         strategy.close_all(comment="Failed Breakout")
+        exitReason := "FAILED BREAKOUT"
     else if stopLossHit
         strategy.close_all(comment="Stop Loss / Trail Hit")
-    else if profitTargetHit
-        strategy.close_all(comment="Profit Target Hit")
+        exitReason := trailStartActivated ? "ATR TRAIL" : "STOP LOSS"
     else if not isTrendFilterPassed
         strategy.close_all(comment="Trend Filter Fail (Bear Market)")
+        exitReason := "BEAR MARKET"
 
 // --- RESET TRACKING ON POSITION CLOSE ---
 if strategy.position_size == 0
@@ -448,110 +519,83 @@ if strategy.position_size == 0
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // --- CLEAN TREND VISUALIZATION ---
-// Only show SMA if enabled, with clean styling
-plot(showTrendSma ? trendSma : na, "Trend Filter", 
-     color = color.new(color.white, 30), 
-     linewidth = 1)
+// UI-1 Requirement: 200 SMA - Green (bull), red (bear), 20% transparency
+smaColor = isTrendBullish ? color.new(color.green, 20) : color.new(color.red, 20)
+plot(showTrendSma ? trendSma : na, "200 SMA", color=smaColor, linewidth=2)
 
-// --- CLEAN STOP LEVELS ---
-// Deep red stop loss line like in reference
-plot(showStopLevels and strategy.position_size > 0 ? currentStopPrice : na, 
-     "Hard Stop Loss", 
-     color = color.new(color.red, 0), 
-     style = plot.style_linebr, 
-     linewidth = 2)
+// --- SINGLE STOP LOSS LINE ---
+// One clear, continuous stop loss line - shows step-wise pyramiding and smooth trailing motion
+plot(strategy.position_size > 0 ? currentStopPrice : na, "Stop Loss", color=color.red, linewidth=2)
 
-// --- ENHANCED TRADE SIGNALS WITH CONSOLIDATED LABELS ---
-// Track entry and exit events with detailed info
-var bool showBuySignal = false
-var bool showSellSignal = false
-var string buySignalText = ""
-var string sellSignalText = ""
-var string lastExitReason = ""
 
-// --- PROFIT ACTIVATION LEVEL VISUALIZATION ---
-plot(showStopLevels and strategy.position_size > 0 and not na(profitActivationLevel) ? profitActivationLevel : na, 
-     "Profit Activation Level", 
-     color = color.new(color.blue, 50), 
-     style = plot.style_linebr, 
-     linewidth = 1)
 
-// Update signal flags and consolidated labels based on position changes
+// --- CLEAN CODED ENTRY/EXIT MARKERS ---
+// Entry markers: Small neon arrows with coded text
+var string lastEntryType = na
+var string entryCode = na
 if strategy.position_size > 0 and strategy.position_size[1] == 0
-    // Position just opened - create consolidated buy label
-    showBuySignal := true
-    showSellSignal := false
-    
-    // Determine entry type
-    entryType = breakoutEntryCondition ? "Breakout" : dipBuyEntryCondition ? "Dip" : "Entry"
-    buySignalText := "Buy (" + entryType + ")\n$" + str.tostring(close, "#,###")
-    
-else if strategy.position_size == 0 and strategy.position_size[1] > 0
-    // Position just closed - create consolidated sell label
-    showBuySignal := false
-    showSellSignal := true
-    
-    // Calculate return
-    avgPrice = strategy.position_avg_price[1]
-    returnPct = avgPrice > 0 ? ((close - avgPrice) / avgPrice * 100) : 0
-    returnStr = (returnPct >= 0 ? "+" : "") + str.tostring(returnPct, "#.#") + "%"
-    
-    // Use last known exit reason or default
-    exitType = lastExitReason != "" ? lastExitReason : "Exit"
-    sellSignalText := "Sell (" + exitType + ")\n$" + str.tostring(close, "#,###") + "\n" + returnStr
-    
-else
-    // No position change
-    showBuySignal := false
-    showSellSignal := false
+    if breakoutEntryCondition
+        lastEntryType := "BREAKOUT"
+        entryCode := traditionalBreakoutCondition ? "T1-F2B" : "T1-F2V" // Traditional vs Volume spike breakout
+    else if dipBuyEntryCondition  
+        lastEntryType := "DIP_BUY"
+        entryCode := "T1-F3"
 
-// Track exit reasons when they occur
-if strategy.position_size == 0 and strategy.position_size[1] > 0
-    if failedBreakoutExit
-        lastExitReason := "Failed BO"
-    else if stopLossHit
-        lastExitReason := "Stop Loss"
-    else if profitTargetHit
-        lastExitReason := "Target"
-    else if not isTrendFilterPassed
-        lastExitReason := "Trend Fail"
+// Entry arrow - consistent dark blue color
+entryCondition = showTradeLabels and strategy.position_size > 0 and strategy.position_size[1] == 0
+plotshape(entryCondition, "Entry", shape.triangleup, location.belowbar, color.new(color.blue, 30), size=size.tiny)
+
+// Exit markers: Coded text with stacking for trail exits
+var label exitLabel = na
+var int exitStackCount = 0
+
+if showTradeLabels and strategy.position_size == 0 and strategy.position_size[1] > 0 and not na(exitReason)
+    label.delete(exitLabel[1])
+    
+    // Generate exit code
+    exitCode = exitReason == "STOP LOSS" ? "T1-SL" : 
+               exitReason == "ATR TRAIL" ? "T1-F4" : 
+               exitReason == "FAILED BREAKOUT" ? "T1-F5" : 
+               exitReason == "BEAR MARKET" ? "T1-F1" : "T1-EXIT"
+    
+    exitColor = color.new(color.orange, 30) // Consistent dark orange for all exits
+    
+    // Handle stacking for trail exits (when multiple units close)
+    stackOffset = 0.0
+    if exitReason == "ATR TRAIL" and currentPyramidCount > 0
+        // Calculate number of units that were open
+        unitsOpen = currentPyramidCount + 1
+        // Stack markers vertically for each unit
+        for i = 1 to unitsOpen
+            unitExitCode = "T" + str.tostring(i) + "-F4"
+            stackHeight = high + (atr * 0.3 * (i - 1)) // Stack with 0.3 ATR spacing
+            unitLabel = label.new(bar_index, stackHeight, unitExitCode, style=label.style_label_down, color=exitColor, textcolor=color.white, size=size.tiny)
     else
-        lastExitReason := "Manual"
-
-// PRIMARY SIGNALS - Clean minimal arrows only
-plotshape(showTradeLabels and showBuySignal, 
-          title="Buy Signal", 
-          location=location.belowbar, 
-          color=color.new(color.lime, 0), 
-          style=shape.triangleup, 
-          size=size.tiny)
-
-plotshape(showTradeLabels and showSellSignal, 
-          title="Sell Signal", 
-          location=location.abovebar, 
-          color=color.new(color.red, 0), 
-          style=shape.triangledown, 
-          size=size.tiny)
+        // Single exit marker for non-trail exits
+        exitLabel := label.new(bar_index, high, exitCode, style=label.style_label_down, color=exitColor, textcolor=color.white, size=size.tiny)
 
 // --- GLOBAL SCOPE CALCULATIONS FOR DEBUG INDICATORS ---
 // Calculate debug conditions at global scope to avoid local plotting issues
-pyramidReadyCondition = showDebugInfo and enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries and strategy.openprofit >= ((currentPyramidCount + 1) * (strategy.equity * riskPercent / 100))
+unitReadyCondition = showDebugInfo and enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries and ((close - strategy.position_avg_price) / atr) >= ((currentPyramidCount + 1) * pyramidSpacingATR)
 
 // --- ALL PLOTTING FUNCTIONS AT GLOBAL SCOPE ---
 // TRADE LABELS REMOVED FOR CLEANER CHART
 // (Labels disabled - only keeping minimal arrow signals)
 
 // DEBUG PLOTTING FUNCTIONS - All at global scope
-// Pyramiding readiness indicator
-plotshape(pyramidReadyCondition, title="Pyramid Ready", location=location.top, 
+// Unit addition readiness indicator
+plotshape(unitReadyCondition, title="Unit Ready", location=location.top, 
          color=color.new(color.yellow, 70), style=shape.circle, size=size.tiny)
 
 // Clean trend filter background with better text positioning
 bgcolor(showDebugInfo and not isTrendFilterPassed ? color.new(color.red, 95) : na, title="Bear Market")
 
 // Entry condition indicators with better spacing
-plotchar(showDebugInfo and breakoutEntryCondition, title="Breakout", char="↗", 
+plotchar(showDebugInfo and traditionalBreakoutCondition, title="Monthly Breakout", char="↗", 
          location=location.belowbar, color=color.new(color.blue, 40), size=size.small)
+
+plotchar(showDebugInfo and volumeSpikeBreakoutCondition, title="Volume Spike", char="V", 
+         location=location.belowbar, color=color.new(color.yellow, 40), size=size.small)
 
 plotchar(showDebugInfo and dipBuyEntryCondition, title="Dip Buy", char="↙", 
          location=location.belowbar, color=color.new(color.purple, 40), size=size.small)
@@ -568,93 +612,78 @@ plotshape(showDebugInfo and trailStartActivated and strategy.position_size > 0,
           title="Trail Activated", location=location.top, color=color.new(color.orange, 60), 
           style=shape.diamond, size=size.tiny)
 
-// --- PROPERLY ANCHORED RISK VISUALIZATION BOXES ---
-// Advanced risk/reward visualization system with proper scaling
+// --- PERSISTENT TRADING ZONES ---
+// Show profit/risk zones for entire duration of each trade (entry to exit)
+tradeIsActive = strategy.position_size > 0
+profitZoneColor = tradeIsActive and close > strategy.position_avg_price ? color.new(color.green, 95) : na
+riskZoneColor = tradeIsActive and close < currentStopPrice ? color.new(color.red, 95) : na
 
-// Track position entry time for box anchoring
-var int positionStartBar = na
-var int positionEndBar = na
-var box riskBox = na
-var box rewardBox = na
-var bool boxesCreated = false
-
-// Update box anchoring when position opens
-if strategy.position_size > 0 and strategy.position_size[1] == 0
-    positionStartBar := bar_index
-    positionEndBar := bar_index + 50  // Fixed width boxes
-    boxesCreated := false
-
-// Create boxes only once when position opens (not on every bar)
-if strategy.position_size > 0 and not na(positionStartBar) and not boxesCreated
-    entryPrice = strategy.position_avg_price
-    stopPrice = currentStopPrice
-    
-    // Calculate upside target based on reward:risk ratio and exit mode
-    rewardTarget = na(stopPrice) ? entryPrice + (atr * rewardRiskRatio) : entryPrice + (math.abs(entryPrice - stopPrice) * rewardRiskRatio)
-    
-    // Use aggressive profit target if that mode is selected
-    if exitMode == "Aggressive Profit Take" and not na(aggressiveProfitPrice)
-        rewardTarget := aggressiveProfitPrice
-    
-    // Create risk zone box (entry to stop loss) - only once
-    if not na(stopPrice)
-        riskBox := box.new(positionStartBar, math.min(entryPrice, stopPrice), positionEndBar, math.max(entryPrice, stopPrice), bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 60), border_width=1, text="Risk Zone\n" + str.tostring(math.abs((entryPrice - stopPrice) / entryPrice * 100), "#.#") + "%", text_color=color.white, text_size=size.small)
-    
-    // Create reward zone box (entry to target) - only once
-    if not na(rewardTarget)
-        rewardBox := box.new(positionStartBar, math.min(entryPrice, rewardTarget), positionEndBar, math.max(entryPrice, rewardTarget), bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 60), border_width=1, text="Reward Zone\n" + str.tostring((rewardTarget - entryPrice) / entryPrice * 100, "#.#") + "%", text_color=color.white, text_size=size.small)
-    
-    boxesCreated := true
-
-// Clean up boxes when position closes
-if strategy.position_size == 0 and strategy.position_size[1] > 0
-    if not na(riskBox)
-        box.delete(riskBox)
-        riskBox := na
-    if not na(rewardBox)
-        box.delete(rewardBox)
-        rewardBox := na
-    positionStartBar := na
-    positionEndBar := na
-    boxesCreated := false
+// Background zones persist throughout each trade duration
+bgcolor(showStopLevels ? profitZoneColor : na, title="Profit Zone")
+bgcolor(showStopLevels ? riskZoneColor : na, title="Risk Zone")
 
 // Subtle background when not in position
 bgcolor(strategy.position_size == 0 ? color.new(color.white, 98) : na)
 
-// --- CLEAN PERFORMANCE DISPLAY ---
-// Properly stacked information with no overlap
+// --- SYSTEMATIC UI TABLE ---
+// Clean system status display with no price anchors
 if barstate.islast and showTradeLabels
-    var table infoTable = table.new(position.top_right, 2, 5, 
-                                   bgcolor=color.new(color.white, 90), 
-                                   border_width=1,
-                                   border_color=color.new(color.gray, 60))
+    var table systemTable = table.new(position.top_right, 2, 8, 
+                                     bgcolor=color.new(color.white, 85), 
+                                     border_width=1,
+                                     border_color=color.new(color.gray, 50))
     
-    // Calculate key metrics
-    strategyReturn = (strategy.equity - strategy.initial_capital) / strategy.initial_capital * 100
+    // Calculate system metrics
+    trendStatus = isTrendFilterPassed ? "BULL" : "BEAR"
+    currentSignal = breakoutEntryCondition ? "BREAKOUT" : dipBuyEntryCondition ? "DIP_BUY" : "WAIT"
     
-    // Header row
-    table.cell(infoTable, 0, 0, "JON Strategy", text_color=color.new(color.black, 0), 
-               text_size=size.normal, bgcolor=color.new(color.blue, 80))
-    table.cell(infoTable, 1, 0, "Status", text_color=color.white, 
-               text_size=size.normal, bgcolor=color.new(color.blue, 80))
+    // Position metrics
+    currentUnits = strategy.position_size > 0 ? currentPyramidCount + 1 : 0
+    maxUnits = maxPyramidEntries + 1
+    currentRisk = strategy.position_size > 0 ? (currentUnits * adjustedUnitRiskPercent) : 0.0
     
-    // Performance metrics with better spacing
-    table.cell(infoTable, 0, 1, "Return", text_color=color.new(color.black, 20), text_size=size.small)
-    table.cell(infoTable, 1, 1, str.tostring(strategyReturn, "#.#") + "%", 
-               text_color=strategyReturn > 0 ? color.green : color.red, text_size=size.small)
+    // Profit in ATR terms (no price anchoring)
+    profitATR = strategy.position_size > 0 and atr > 0 ? (close - strategy.position_avg_price) / atr : 0.0
     
-    table.cell(infoTable, 0, 2, "Trades", text_color=color.new(color.black, 20), text_size=size.small)
-    table.cell(infoTable, 1, 2, str.tostring(strategy.closedtrades), text_color=color.blue, text_size=size.small)
+    // Trail status
+    trailStatus = strategy.position_size > 0 ? (trailStartActivated ? "ACTIVE" : "PENDING") : "INACTIVE"
+    trailValue = strategy.position_size > 0 ? 
+                 (trailStartActivated ? 
+                  (atrTrailHigh - atrTrailStop) / atr : 
+                  trailStartProfitMultiplier) : 0.0
     
-    table.cell(infoTable, 0, 3, "Win Rate", text_color=color.new(color.black, 20), text_size=size.small)
-    winRate = strategy.closedtrades == 0 ? 0 : strategy.wintrades / strategy.closedtrades * 100
-    table.cell(infoTable, 1, 3, str.tostring(winRate, "#") + "%", 
-               text_color=winRate > 50 ? color.green : color.red, text_size=size.small)
+    // Header
+    table.cell(systemTable, 0, 0, "JON SYSTEM", text_color=color.white, text_size=size.normal, 
+               bgcolor=color.new(color.blue, 20))
+    table.cell(systemTable, 1, 0, "", text_color=color.white, text_size=size.normal, 
+               bgcolor=color.new(color.blue, 20))
     
-    // Market condition and signal status
-    marketStatus = not isTrendFilterPassed ? "BEAR" : "BULL"
-    currentSignal = breakoutEntryCondition ? "BREAKOUT" : dipBuyEntryCondition ? "DIP BUY" : "WAIT"
-    table.cell(infoTable, 0, 4, "Market", text_color=color.new(color.black, 20), text_size=size.small)
-    table.cell(infoTable, 1, 4, marketStatus + " | " + currentSignal, 
-               text_color=marketStatus == "BEAR" ? color.red : currentSignal == "WAIT" ? color.gray : color.blue, 
-               text_size=size.small)
+    // System status rows
+    table.cell(systemTable, 0, 1, "Trend", text_color=color.black, text_size=size.small)
+    table.cell(systemTable, 1, 1, trendStatus, text_color=isTrendFilterPassed ? color.green : color.red, text_size=size.small)
+    
+    table.cell(systemTable, 0, 2, "Signal", text_color=color.black, text_size=size.small)
+    table.cell(systemTable, 1, 2, currentSignal, 
+               text_color=currentSignal == "WAIT" ? color.gray : color.blue, text_size=size.small)
+    
+    table.cell(systemTable, 0, 3, "Units", text_color=color.black, text_size=size.small)
+    table.cell(systemTable, 1, 3, str.tostring(currentUnits) + "/" + str.tostring(maxUnits), 
+               text_color=strategy.position_size > 0 ? color.blue : color.gray, text_size=size.small)
+    
+    table.cell(systemTable, 0, 4, "Risk", text_color=color.black, text_size=size.small)
+    table.cell(systemTable, 1, 4, str.tostring(currentRisk, "#.#") + "%", 
+               text_color=currentRisk > 0 ? color.orange : color.gray, text_size=size.small)
+    
+    table.cell(systemTable, 0, 5, "Profit", text_color=color.black, text_size=size.small)
+    table.cell(systemTable, 1, 5, str.tostring(profitATR, "#.#") + " ATR", 
+               text_color=profitATR > 0 ? color.green : profitATR < 0 ? color.red : color.gray, text_size=size.small)
+    
+    table.cell(systemTable, 0, 6, "Trail", text_color=color.black, text_size=size.small)
+    table.cell(systemTable, 1, 6, trailStatus, 
+               text_color=trailStartActivated ? color.orange : color.gray, text_size=size.small)
+    
+    // Trail distance or trigger level
+    trailLabel = trailStartActivated ? "Distance" : "Trigger"
+    trailText = str.tostring(trailValue, "#.#") + " ATR"
+    table.cell(systemTable, 0, 7, trailLabel, text_color=color.black, text_size=size.small)
+    table.cell(systemTable, 1, 7, trailText, text_color=color.purple, text_size=size.small)
