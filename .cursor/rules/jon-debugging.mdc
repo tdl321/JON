@@ -1,0 +1,187 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# JON Strategy Debugging & Error Tracking
+
+## Current Known Issues Log
+
+### 🔴 CRITICAL ISSUES (Strategy Breaking)
+**Issue #1: Missing `if trailStartActivated` Block**
+- **Location**: Exit Strategy section, ~line 349-352
+- **Problem**: Trailing logic runs without activation check
+- **Impact**: Trailing stops activate immediately, incorrect exit behavior
+- **Status**: IDENTIFIED - Ready to fix
+
+**Issue #2: Table UI Errors**
+- **Location**: Visual Interface section, table creation
+- **Problem**: Table calculations may have scope or na value issues
+- **Impact**: Broken UI display, incorrect system status
+- **Status**: NEEDS ANALYSIS
+
+**Issue #3: Missed Trade Signals**
+- **Location**: Signal Detection section
+- **Problem**: Entry conditions not triggering when they should
+- **Impact**: Strategy misses valid trades per parameters
+- **Status**: NEEDS ANALYSIS
+
+### 🟡 POTENTIAL ISSUES (Monitoring)
+**Issue #4: Variable Scope Problems**
+- **Location**: Various sections using var declarations
+- **Problem**: Variables may not reset properly between trades
+- **Impact**: Carry-over state causing incorrect behavior
+- **Status**: MONITORING
+
+**Issue #5: Monthly Data Request Issues**
+- **Location**: Breakout/Dip Buy signal detection
+- **Problem**: request.security calls may have lookahead or data issues
+- **Impact**: Incorrect monthly high/low references
+- **Status**: MONITORING
+
+## Debugging Patterns for JON Strategy
+
+### Entry Signal Debugging
+```pinescript
+// Add these debug plots when troubleshooting entries
+plotchar(showDebugInfo and traditionalBreakoutCondition, "Debug: Monthly Breakout", "↗", location.belowbar, color.blue)
+plotchar(showDebugInfo and volumeSpikeBreakoutCondition, "Debug: Volume Spike", "V", location.belowbar, color.yellow)
+plotchar(showDebugInfo and dipBuyEntryCondition, "Debug: Dip Buy", "↙", location.belowbar, color.purple)
+
+// Log entry conditions
+if showDebugInfo
+    log.info("Entry Debug - Breakout: " + str.tostring(traditionalBreakoutCondition) + 
+             " | Volume: " + str.tostring(volumeSpikeBreakoutCondition) + 
+             " | Dip: " + str.tostring(dipBuyEntryCondition))
+```
+
+### Exit Signal Debugging
+```pinescript
+// Add these for exit debugging
+if showDebugInfo and strategy.position_size > 0
+    log.info("Exit Debug - StopHit: " + str.tostring(stopLossHit) + 
+             " | TrailActive: " + str.tostring(trailStartActivated) + 
+             " | CurrentStop: " + str.tostring(currentStopPrice))
+```
+
+### Position Sizing Debugging
+```pinescript
+// Add for position sizing issues
+if showDebugInfo and strategy.position_size != strategy.position_size[1]
+    log.info("Position Debug - Size: " + str.tostring(strategy.position_size) + 
+             " | Entry: " + str.tostring(strategy.position_avg_price) + 
+             " | Stop: " + str.tostring(currentStopPrice))
+```
+
+### Monthly Data Debugging
+```pinescript
+// Add for monthly reference debugging
+if showDebugInfo
+    table.cell(debugTable, 0, 8, "Monthly High", text_color=color.black)
+    table.cell(debugTable, 1, 8, str.tostring(validMonthlyHigh), text_color=color.blue)
+    table.cell(debugTable, 0, 9, "Monthly Low", text_color=color.black)
+    table.cell(debugTable, 1, 9, str.tostring(validMonthlyLow), text_color=color.purple)
+```
+
+## Error Resolution Checklist
+
+### Before Making Changes
+- [ ] Backup current working code
+- [ ] Identify exact line numbers of issues
+- [ ] Test fix on single timeframe first
+- [ ] Verify parameters remain unchanged (reference jon-parameters.mdc)
+
+### After Making Changes
+- [ ] Compile successfully in TradingView
+- [ ] No runtime errors in Strategy Tester
+- [ ] UI displays correctly
+- [ ] Test with debug info enabled
+- [ ] Verify entry/exit signals match expectations
+
+### Testing Protocol
+1. **Syntax Check**: Ensure Pine Script compiles without errors
+2. **Runtime Check**: Run strategy tester on multiple timeframes
+3. **Signal Check**: Enable debug mode and verify signal logic
+4. **UI Check**: Verify all tables, plots, and markers display correctly
+5. **Historical Check**: Test on known good/bad entry periods
+
+## Common Pine Script v6 Gotchas for JON Strategy
+
+### Variable Scope Issues
+```pinescript
+// ❌ WRONG - Variable declared in wrong scope
+if condition
+    var float myVar = na  // This won't work as expected
+
+// ✅ CORRECT - Variable declared at global scope
+var float myVar = na
+if condition
+    myVar := someValue
+```
+
+### Request.Security Issues
+```pinescript
+// ❌ WRONG - Can cause lookahead bias
+monthlyHigh = request.security(syminfo.tickerid, "1M", high)
+
+// ✅ CORRECT - Prevents lookahead bias
+monthlyHigh = request.security(syminfo.tickerid, "1M", high, lookahead=barmerge.lookahead_off)
+```
+
+### Table Cell Issues
+```pinescript
+// ❌ WRONG - Can cause runtime errors with na values
+table.cell(myTable, 0, 0, str.tostring(naValue))
+
+// ✅ CORRECT - Handle na values properly
+cellValue = na(naValue) ? "N/A" : str.tostring(naValue)
+table.cell(myTable, 0, 0, cellValue)
+```
+
+## Issue Tracking Template
+
+```markdown
+**Issue #X: [Brief Description]**
+- **Date Identified**: YYYY-MM-DD
+- **Location**: [File section or line numbers]
+- **Problem**: [Detailed description of the issue]
+- **Impact**: [How it affects strategy performance]
+- **Root Cause**: [What's causing the issue]
+- **Solution**: [How to fix it]
+- **Status**: [IDENTIFIED/IN_PROGRESS/TESTING/RESOLVED]
+- **Verification**: [How to confirm it's fixed]
+```
+
+## Performance Monitoring
+
+### Key Metrics to Track
+- Entry signal frequency vs expected
+- Exit timing accuracy
+- Position sizing calculations
+- Risk management compliance
+- UI responsiveness
+
+### Red Flags to Watch For
+- Zero trades over extended periods (signal detection broken)
+- Excessive trades (signal logic too sensitive)
+- UI showing "N/A" or blank values
+- Stop losses not triggering
+- Position sizes outside 1-4% risk range
+
+## Debug Mode Best Practices
+
+1. **Always test with showDebugInfo = true first**
+2. **Use log.info() liberally for state tracking**
+3. **Add temporary plotchar() for visual confirmation**
+4. **Create debug tables for complex calculations**
+5. **Test edge cases (market opens, holidays, low volume)**
+
+## Contact Points for Issues
+
+- **Parameter Validation**: Reference `jon-parameters.mdc`
+- **Code Standards**: Reference `pine-script-standards.mdc`
+- **Backtest Validation**: Reference `backtest-validation.mdc`
+
+---
+
+*This file should be updated whenever new issues are discovered or resolved*

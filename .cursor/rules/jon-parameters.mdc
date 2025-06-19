@@ -1,0 +1,202 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# JON Strategy Master Parameter Reference
+
+**⚠️ CRITICAL: These parameters are LOCKED and must NEVER be modified in the code without explicit user approval.**
+
+This document serves as the master reference for all input parameters in the JON strategy. Any code changes must be validated against these exact parameter specifications.
+
+## F-1: TREND FILTER SETTINGS
+
+```pinescript
+trendFilterEnabled = input.bool(true, "Enable 200 SMA Trend Filter", group = "Trend Filter (F-1)")
+trendSmaLength = input.int(200, "Trend SMA Length", minval = 50, maxval = 500, group = "Trend Filter (F-1)")
+useReferenceAsset = input.bool(true, "Use Reference Asset Filter", group = "Trend Filter (F-1)")
+referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", group = "Trend Filter (F-1)")
+```
+
+**Purpose**: Primary trend filtering system using 200 SMA and optional reference asset
+**Defaults**: Enabled, 200-period SMA, CRYPTOCAP:TOTAL reference
+**Validation**: Must always filter for bullish trends across both primary and reference assets
+
+## F-2: BREAKOUT ENTRY SETTINGS
+
+### Traditional Monthly Breakout Pathway
+```pinescript
+enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakout Entry (F-2)")
+breakoutTimeframe = input.string("1M", "Breakout Timeframe (Monthly)", options = ["1D", "1W", "1M"], group = "Breakout Entry (F-2)")
+breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1, maxval = 60, group = "Breakout Entry (F-2)")
+breakoutMinAgeDays = input.int(20, "Min Age of Crossed High (days)", minval = 1, maxval = 100, group = "Breakout Entry (F-2)")
+breakoutMaxAgeDays = input.int(200, "Max Age of Crossed High (days)", minval = 5, maxval = 500, group = "Breakout Entry (F-2)")
+```
+
+### Volume Spike Pathway (Alternative Trigger)
+```pinescript
+enableVolumeSpikeTrigger = input.bool(true, "Enable Volume Spike Trigger", group = "Breakout Entry (F-2)")
+volumeThresholdPercent = input.float(50.0, "Volume Spike Threshold %", minval = 10.0, maxval = 200.0, step = 10.0, group = "Breakout Entry (F-2)")
+volumeLookbackPeriod = input.int(20, "Volume Average Period", minval = 5, maxval = 50, group = "Breakout Entry (F-2)")
+volumeSpikeMinMove = input.float(2.0, "Min Price Move % for Volume Trigger", minval = 0.1, maxval = 5.0, step = 0.1, group = "Breakout Entry (F-2)")
+```
+
+**Purpose**: Dual-pathway breakout system with traditional monthly highs and volume spike alternatives
+**Key Logic**: OR condition - either pathway can trigger entry
+**Age Requirements**: Monthly highs must be 20-200 days old, crossed within 20 days
+
+## F-3: DIP BUY ENTRY SETTINGS
+
+```pinescript
+enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy Entry (F-3)")
+dipBuyTimeframe = input.string("1M", "Dip Buy Timeframe (Monthly)", options = ["1D", "1W", "1M"], group = "Dip Buy Entry (F-3)")
+dipRecoveryWithinDays = input.int(30, "Recovery Within (days)", minval = 1, maxval = 90, group = "Dip Buy Entry (F-3)")
+dipMinAgeDays = input.int(15, "Min Age of Crossed Low (days)", minval = 1, maxval = 100, group = "Dip Buy Entry (F-3)")
+dipMaxAgeDays = input.int(90, "Max Age of Crossed Low (days)", minval = 5, maxval = 200, group = "Dip Buy Entry (F-3)")
+dipTouchBuffer = input.float(0.5, "Dip Touch Buffer %", minval = 0.1, maxval = 1.0, step = 0.1, group = "Dip Buy Entry (F-3)")
+dipRecoveryBuffer = input.float(1.0, "Recovery Buffer %", minval = 0.5, maxval = 2.0, step = 0.1, group = "Dip Buy Entry (F-3)")
+```
+
+**Purpose**: Counter-trend dip buying at monthly lows with recovery confirmation
+**Key Logic**: Must touch monthly low and show recovery within timeframe
+**Age Requirements**: Monthly lows must be 15-90 days old, recovery within 30 days
+**Buffer Parameters**: 0.5% touch tolerance, 1.0% recovery confirmation above monthly low
+
+## F-4: EXIT STRATEGY SETTINGS
+
+```pinescript
+exitMode = input.string("ATR Trail", "Exit Strategy Mode", options = ["ATR Trail"], group = "Exit Strategy (F-4)")
+atrTrailMultiplier = input.float(5.0, "Trailing Distance x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Exit Strategy (F-4)")
+trailStartProfitMultiplier = input.float(5.0, "Trailing Start at Profit x ATR", minval = 1.0, maxval = 20.0, step = 0.1, group = "Exit Strategy (F-4)")
+trailOnTouchHigh = input.bool(false, "Trail Start on Touch High", group = "Exit Strategy (F-4)")
+enableDynamicTrail = input.bool(true, "Enable Dynamic Trail Adjustment", group = "Exit Strategy (F-4)")
+volatilityLookback = input.int(14, "Volatility Reference Period", minval = 10, maxval = 50, group = "Exit Strategy (F-4)")
+```
+
+**Purpose**: Profit-activated trailing stop system with dynamic volatility adjustment
+**Key Features**: 5 ATR trail distance, starts at 5 ATR profit, dynamic adjustment enabled
+**Trail Logic**: Immediate activation (not on touch high), 14-period volatility reference
+
+## F-5: OPPORTUNISTIC EXIT SETTINGS
+
+```pinescript
+enableOpportunisticExit = input.bool(true, "Enable Opportunistic Exit", group = "Opportunistic Exit (F-5)")
+failedBreakoutBars = input.int(5, "Failed Breakout Timeout (bars)", minval = 3, maxval = 50, group = "Opportunistic Exit (F-5)")
+breakoutFollowThrough = input.float(0.5, "Min Follow-Through %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Opportunistic Exit (F-5)")
+correlatedExitBuffer = input.float(2.0, "Correlated Exit Buffer %", minval = 1.0, maxval = 5.0, step = 0.1, group = "Opportunistic Exit (F-5)")
+uncorrelatedExitBuffer = input.float(3.0, "Uncorrelated Exit Buffer %", minval = 1.0, maxval = 5.0, step = 0.1, group = "Opportunistic Exit (F-5)")
+donchianChannelBuffer = input.float(0.5, "Donchian Channel Buffer %", minval = 0.1, maxval = 1.0, step = 0.1, group = "Opportunistic Exit (F-5)")
+```
+
+**Purpose**: Early exit system for failed breakout patterns with configurable thresholds
+**Key Logic**: Exit if no follow-through, price falls below entry levels, or Donchian channel is lost
+**Defaults**: 0.5% follow-through, 2%/3% exit buffers, 0.5% channel buffer
+
+## R-1 & R-2: RISK MANAGEMENT SETTINGS
+
+```pinescript
+unitRiskPercent = input.float(1.0, "Risk Per Unit %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+maxTradeRiskPercent = input.float(4.0, "Max Total Trade Risk %", minval = 1.0, maxval = 8.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+atrLength = input.int(14, "ATR Length", minval = 5, maxval = 50, group = "Risk Management (R-1, R-2)")
+stopLossMultiplier = input.float(5.0, "Initial Stop Loss x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+rewardRiskRatio = input.float(25.0, "Reward:Risk Ratio", minval = 1.0, maxval = 50.0, step = 0.5, group = "Risk Management (R-1, R-2)")
+correlateUnit1 = input.bool(true, "Correlate Unit 1 Entry", group = "Risk Management (R-1, R-2)")
+correlateAdditionalUnits = input.bool(true, "Correlate Additional Units", group = "Risk Management (R-1, R-2)")
+correlateUnit1TrailSL = input.bool(true, "Correlate Unit 1 Trail SL", group = "Risk Management (R-1, R-2)")
+minSLDist = input.bool(true, "Min SL Distance", group = "Risk Management (R-1, R-2)")
+swingLowBuffer = input.float(0.5, "Swing Low Buffer %", minval = 0.1, maxval = 1.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+monthlyLowBuffer = input.float(1.0, "Monthly Low Buffer %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+minStopDistance = input.float(2.0, "Min Stop Distance %", minval = 1.0, maxval = 5.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+```
+
+**Purpose**: Turtle-style unit system with correlation features
+**Risk Model**: 1% per unit, max 4% total (4 units), 5 ATR initial stop
+**Correlation**: All correlation features enabled for unit coordination
+**Buffer Parameters**: 0.5% swing low, 1.0% monthly low, 2.0% minimum stop distance
+
+## R-4: PYRAMIDING ENGINE SETTINGS (TURTLE UNITS)
+
+```pinescript
+enablePyramiding = input.bool(true, "Enable Unit Pyramiding", group = "Pyramiding Engine (R-4)")
+maxPyramidEntries = input.int(3, "Max Additional Units (Total: 4)", minval = 1, maxval = 4, group = "Pyramiding Engine (R-4)")
+pyramidSpacingATR = input.float(1.0, "Unit Spacing (ATR multiplier)", minval = 0.5, maxval = 2.0, step = 0.5, group = "Pyramiding Engine (R-4)")
+trailSLOnPyramiding = input.bool(true, "Trail SL on Unit Additions", group = "Pyramiding Engine (R-4)")
+```
+
+**Purpose**: Progressive unit addition system
+**Unit Logic**: Max 4 total units (1 initial + 3 additional), 1 ATR spacing
+**Trailing**: Stop loss trails on unit additions
+
+## UI-1 & UI-2: DISPLAY SETTINGS
+
+```pinescript
+showTrendSma = input.bool(true, "Show 200 SMA", group = "Display Settings (UI-1, UI-2)")
+showStopLevels = input.bool(true, "Show Stop Loss Levels", group = "Display Settings (UI-1, UI-2)")
+showTradeLabels = input.bool(true, "Show Trade Entry/Exit Labels", group = "Display Settings (UI-1, UI-2)")
+showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings (UI-1, UI-2)")
+```
+
+**Purpose**: Visual interface controls
+**Defaults**: All enabled except debug info
+**Debug**: Must be manually enabled for troubleshooting
+
+## B-3: GLOBAL DEFAULT PRESET SYSTEM
+
+```pinescript
+assetPreset = input.string("Global Default", "Asset Preset (B-3)", options = ["Global Default", "Crypto (BTC)", "Indices (NDX/QQQ)", "Metals (Gold)"], 
+                          group = "Strategy Configuration", tooltip = "Select optimized preset or use universal Global Default")
+```
+
+### Asset-Specific Adjustments (LOCKED LOGIC)
+```pinescript
+adjustedUnitRiskPercent = assetPreset == "Crypto (BTC)" ? unitRiskPercent * 0.8 : assetPreset == "Indices (NDX/QQQ)" ? unitRiskPercent * 1.2 : assetPreset == "Metals (Gold)" ? unitRiskPercent * 1.0 : unitRiskPercent
+```
+
+**Purpose**: Asset-specific parameter optimization
+**Multipliers**: 
+- Crypto (BTC): 0.8x risk (higher volatility)
+- Indices (NDX/QQQ): 1.2x risk (mean reversion tendency)
+- Metals (Gold): 1.0x risk (baseline)
+- Global Default: 1.0x risk (universal application)
+
+**Justification**: 
+- Crypto: Higher volatility requires wider trails, lower risk
+- Indices: 401k flows create mean reversion, tighter trails, higher risk tolerance
+- Metals: Longer-term trends, moderate adjustments
+
+## Parameter Validation Rules
+
+### ✅ ALLOWED Modifications (Implementation Only)
+- Bug fixes in calculation logic
+- Variable scope corrections
+- Pine Script v6 syntax compliance
+- Performance optimizations
+- UI/plotting improvements
+
+### ❌ FORBIDDEN Modifications
+- Any input parameter default values
+- Parameter ranges (minval, maxval)
+- Parameter data types
+- Group assignments
+- Asset preset multiplier values
+- Correlation logic defaults
+
+## Testing Requirements
+
+When making ANY code changes, verify:
+1. All input parameters match this specification exactly
+2. Default values remain unchanged
+3. Asset preset logic uses correct multipliers
+4. Correlation settings maintain their boolean defaults
+5. Group structure remains intact
+
+## Reference Implementation Notes
+
+- **Strategy Philosophy**: "Automate Everything, Robustness over Optimization"
+- **Target Frequency**: <1 trade per month per asset
+- **Primary Assets**: BTCUSD, NDX/QQQ, XAUUSD
+- **Risk Framework**: Turtle unit system with modern volatility adaptation
+
+---
+
+**⚠️ REMINDER: This parameter configuration represents months of careful design and testing. Any deviation from these specifications requires explicit user approval and thorough backtesting validation.**

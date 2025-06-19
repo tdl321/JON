@@ -1,7 +1,7 @@
 // © 2025 JON Systems
 //@version=6
-strategy("JON - Turtle Trading Strategy",
-     shorttitle="JON",
+strategy("JON - Futures Trading Strategy",
+     shorttitle="JON-FUT",
      overlay=true,
      pyramiding=4,
      // FIX: Changed default_qty_type to 'fixed' to allow our manual position sizing to work.
@@ -33,7 +33,8 @@ strategy("JON - Turtle Trading Strategy",
 // - Unit Spacing: 1×ATR spacing between units for optimal balance
 // - Risk Management: Balanced risk controls with modern volatility considerations
 //
-// Primary Assets: BTCUSD, NDX/QQQ, XAUUSD (with CRYPTOCAP:TOTAL reference filter)
+// Primary Assets: Nasdaq Futures (NQ), Yen Futures (6J), Gold Futures (GC), BTC Futures (BTC)
+// Asset Strategy: Multi-futures diversification across equity, currency, commodity, and crypto sectors
 // Strategy Type: Monthly trend-following with dual entry system and profit-activated trailing
 // Risk Management: Turtle unit system with volatility-based sizing and strict risk controls
 
@@ -49,23 +50,34 @@ referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", grou
 
 // --- F-2: BREAKOUT ENTRY SETTINGS ---
 enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakout Entry (F-2)")
-// Traditional monthly breakout pathway
+
+// F-2D: Donchian Channel System (Turtle Method)
 breakoutTimeframe = input.string("1M", "Breakout Timeframe (Monthly)", options = ["1D", "1W", "1M"], group = "Breakout Entry (F-2)")
+monthlyDonchianPeriod = input.int(55, "Monthly Donchian Period", minval = 20, maxval = 200, group = "Breakout Entry (F-2)", tooltip = "Classic Turtle long-term channel")
 breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1, maxval = 60, group = "Breakout Entry (F-2)")
 breakoutMinAgeDays = input.int(20, "Min Age of Crossed High (days)", minval = 1, maxval = 100, group = "Breakout Entry (F-2)")
 breakoutMaxAgeDays = input.int(200, "Max Age of Crossed High (days)", minval = 5, maxval = 500, group = "Breakout Entry (F-2)")
-// Volume spike pathway (alternative trigger)
+
+// F-2V: Volume Spike System (Alternative High-Conviction Trigger)
 enableVolumeSpikeTrigger = input.bool(true, "Enable Volume Spike Trigger", group = "Breakout Entry (F-2)")
 volumeThresholdPercent = input.float(50.0, "Volume Spike Threshold %", minval = 10.0, maxval = 200.0, step = 10.0, group = "Breakout Entry (F-2)")
 volumeLookbackPeriod = input.int(20, "Volume Average Period", minval = 5, maxval = 50, group = "Breakout Entry (F-2)")
 volumeSpikeMinMove = input.float(2.0, "Min Price Move % for Volume Trigger", minval = 0.1, maxval = 5.0, step = 0.1, group = "Breakout Entry (F-2)")
+volumeSpikeWindowDays = input.int(5, "Volume Spike Window (days)", minval = 3, maxval = 10, group = "Breakout Entry (F-2)")
+priceRiseMinDays = input.int(3, "Price Rise Min Window (days)", minval = 1, maxval = 5, group = "Breakout Entry (F-2)")
+priceRiseMaxDays = input.int(5, "Price Rise Max Window (days)", minval = 3, maxval = 10, group = "Breakout Entry (F-2)")
 
 // --- F-3: DIP BUY ENTRY SETTINGS ---
 enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy Entry (F-3)")
+
+// F-3D: Donchian Channel System (Turtle Method)
 dipBuyTimeframe = input.string("1M", "Dip Buy Timeframe (Monthly)", options = ["1D", "1W", "1M"], group = "Dip Buy Entry (F-3)")
+monthlyDipDonchianPeriod = input.int(55, "Monthly Dip Donchian Period", minval = 20, maxval = 200, group = "Dip Buy Entry (F-3)", tooltip = "Channel for monthly support levels")
 dipRecoveryWithinDays = input.int(30, "Recovery Within (days)", minval = 1, maxval = 90, group = "Dip Buy Entry (F-3)")
 dipMinAgeDays = input.int(15, "Min Age of Crossed Low (days)", minval = 1, maxval = 100, group = "Dip Buy Entry (F-3)")
 dipMaxAgeDays = input.int(90, "Max Age of Crossed Low (days)", minval = 5, maxval = 200, group = "Dip Buy Entry (F-3)")
+dipTouchBuffer = input.float(0.5, "Dip Touch Buffer %", minval = 0.1, maxval = 1.0, step = 0.1, group = "Dip Buy Entry (F-3)")
+dipRecoveryBuffer = input.float(1.0, "Recovery Buffer %", minval = 0.5, maxval = 2.0, step = 0.1, group = "Dip Buy Entry (F-3)")
 
 // --- F-4: EXIT STRATEGY SETTINGS ---
 exitMode = input.string("ATR Trail", "Exit Strategy Mode", options = ["ATR Trail"], group = "Exit Strategy (F-4)")
@@ -78,6 +90,10 @@ volatilityLookback = input.int(14, "Volatility Reference Period", minval = 10, m
 // --- F-5: OPPORTUNISTIC EXIT SETTINGS ---
 enableOpportunisticExit = input.bool(true, "Enable Opportunistic Exit", group = "Opportunistic Exit (F-5)")
 failedBreakoutBars = input.int(5, "Failed Breakout Timeout (bars)", minval = 3, maxval = 50, group = "Opportunistic Exit (F-5)")
+breakoutFollowThrough = input.float(0.5, "Min Follow-Through %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Opportunistic Exit (F-5)")
+correlatedExitBuffer = input.float(2.0, "Correlated Exit Buffer %", minval = 1.0, maxval = 5.0, step = 0.1, group = "Opportunistic Exit (F-5)")
+uncorrelatedExitBuffer = input.float(3.0, "Uncorrelated Exit Buffer %", minval = 1.0, maxval = 5.0, step = 0.1, group = "Opportunistic Exit (F-5)")
+donchianChannelBuffer = input.float(0.5, "Donchian Channel Buffer %", minval = 0.1, maxval = 1.0, step = 0.1, group = "Opportunistic Exit (F-5)")
 
 // --- R-1 & R-2: RISK MANAGEMENT SETTINGS ---
 unitRiskPercent = input.float(1.0, "Risk Per Unit %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Risk Management (R-1, R-2)")
@@ -89,6 +105,9 @@ correlateUnit1 = input.bool(true, "Correlate Unit 1 Entry", group = "Risk Manage
 correlateAdditionalUnits = input.bool(true, "Correlate Additional Units", group = "Risk Management (R-1, R-2)")
 correlateUnit1TrailSL = input.bool(true, "Correlate Unit 1 Trail SL", group = "Risk Management (R-1, R-2)")
 minSLDist = input.bool(true, "Min SL Distance", group = "Risk Management (R-1, R-2)")
+swingLowBuffer = input.float(0.5, "Swing Low Buffer %", minval = 0.1, maxval = 1.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+monthlyLowBuffer = input.float(1.0, "Monthly Low Buffer %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+minStopDistance = input.float(2.0, "Min Stop Distance %", minval = 1.0, maxval = 5.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 
 // --- R-4: PYRAMIDING ENGINE SETTINGS (TURTLE UNITS) ---
 enablePyramiding = input.bool(true, "Enable Unit Pyramiding", group = "Pyramiding Engine (R-4)")
@@ -109,198 +128,367 @@ assetPreset = input.string("Global Default", "Asset Preset (B-3)", options = ["G
 // B-3 Implementation: Asset-specific parameter adjustments (explicitly justified)
 adjustedUnitRiskPercent = assetPreset == "Crypto (BTC)" ? unitRiskPercent * 0.8 : assetPreset == "Indices (NDX/QQQ)" ? unitRiskPercent * 1.2 : assetPreset == "Metals (Gold)" ? unitRiskPercent * 1.0 : unitRiskPercent
 
-// NOTE: Global Default uses base parameters. Deviations justified by:
-// - Crypto: Higher volatility requires wider trails, lower risk
-// - Indices: 401k flows create mean reversion, tighter trails, higher risk tolerance  
-// - Metals: Longer-term trends, moderate adjustments
+// NOTE: Global Default uses base parameters. Deviations justified by futures characteristics:
+// - Crypto (BTC Futures): Higher volatility requires wider trails, lower risk
+// - Indices (Nasdaq Futures): Institutional flows create mean reversion, tighter trails, higher risk tolerance  
+// - Metals (Gold Futures): Longer-term trends, moderate adjustments
+// - Currency (Yen Futures): Use Global Default - balanced approach for FX volatility
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                    C O R E   I N D I C A T O R S                           |
+// |                                  T R E N D   F I L T E R S                                 |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// --- PRIMARY ASSET INDICATORS ---
+// --- F-1: PRIMARY TREND FILTER (SMA 200) ---
 trendSma = ta.sma(close, trendSmaLength)
 isTrendBullish = not trendFilterEnabled or close > trendSma
-atr = ta.atr(atrLength)
-isDataValid = not na(close) and not na(atr) and atr > 0 and strategy.equity > 0
 
-// F-4A: Enhanced Dynamic ATR Multiplier Calculation (after atr is defined)
-baseAdjustedMultiplier = assetPreset == "Crypto (BTC)" ? atrTrailMultiplier * 1.5 : assetPreset == "Indices (NDX/QQQ)" ? atrTrailMultiplier * 0.7 : assetPreset == "Metals (Gold)" ? atrTrailMultiplier * 1.2 : atrTrailMultiplier
-
-// Dynamic volatility adjustment based on advice document
-volatilityAdjustment = 1.0
-if enableDynamicTrail
-    // Calculate current ATR relative to average ATR (advice document method)
-    avgAtr = ta.sma(atr, volatilityLookback)
-    volatilityRatio = avgAtr > 0 ? atr / avgAtr : 1.0
-    
-    // Apply 4-zone volatility model from advice document
-    volatilityAdjustment := volatilityRatio > 1.2 ? 1.3 :  // High volatility: wider trail
-                           volatilityRatio < 0.8 ? 0.7 :   // Low volatility: tighter trail
-                           1.0                              // Normal volatility: unchanged
-
-adjustedAtrTrailMultiplier = baseAdjustedMultiplier * volatilityAdjustment
-
-// --- REFERENCE ASSET INDICATORS ---
+// --- F-1: REFERENCE ASSET FILTER ---
 referenceClose = useReferenceAsset ? request.security(referenceSymbol, timeframe.period, close) : na
-// Fix: Extract ta.sma call from conditional scope for consistency
-referenceSmaValue = useReferenceAsset and not na(referenceClose) ? ta.sma(referenceClose, trendSmaLength) : na
-referenceSma = referenceSmaValue
+referenceSma = useReferenceAsset and not na(referenceClose) ? ta.sma(referenceClose, trendSmaLength) : na
 isReferenceBullish = not useReferenceAsset or (not na(referenceSma) and referenceClose > referenceSma)
 
-// --- FINAL TREND FILTER VALIDATION ---
+// --- F-1: COMBINED TREND FILTER VALIDATION ---
 isTrendFilterPassed = isTrendBullish and isReferenceBullish
 
-// ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                  S I G N A L   D E T E C T I O N                             |
-// ——————————————————————————————————————————————————————————————————————————————————————————————
+// --- CORE INDICATORS (Used by All Systems) ---
+atr = ta.atr(atrLength)
 
-// --- F-2: BREAKOUT ENTRY ---
-// Get monthly data series (fixed approach to avoid loop variable issues)
-monthlyHigh = request.security(syminfo.tickerid, breakoutTimeframe, high, lookahead=barmerge.lookahead_off)
-monthlyTime = request.security(syminfo.tickerid, breakoutTimeframe, time, lookahead=barmerge.lookahead_off)
+// --- COMPREHENSIVE DATA VALIDATION ---
+// CRITICAL: This algorithm is statistics and math-based - it REQUIRES complete, valid data
+// NO TRADING should occur without ALL data dependencies being satisfied
+// NO FALLBACKS are implemented - invalid data = no trading (by design)
+//
+// COMPLETE VALIDATION COVERAGE:
+// - Basic market data (OHLC) with comprehensive sanity checks
+// - ATR calculation with sufficient history and positive values
+// - Trend filter data (SMA 200 + reference asset from request.security)
+// - Volume data for F-2V volume spike system with history requirements
+// - Monthly Donchian data from request.security() with validation
+// - All ta.sma() calls validated (avgVolume, avgAtr, etc.)
+// - All ta.highest/ta.lowest calculations validated
+// - Strategy system integrity (equity, account minimums)
+// - Historical data sufficiency for ALL lookback periods
+// - Mathematical operation safety (division by zero prevention)
 
-// Get historical monthly data using ta.valuewhen approach
-var float validMonthlyHigh = na
-var int validMonthlyHighAge = na
+// 1. Basic Market Data Validation (OHLC Integrity)
+basicDataValid = not na(close) and not na(high) and not na(low) and not na(open) and 
+                 close > 0 and high > 0 and low > 0 and open > 0 and
+                 high >= low and high >= close and high >= open and
+                 low <= close and low <= open and
+                 volume >= 0  // Volume must be non-negative
 
-if (enableBreakoutEntry)
-    // Find the highest monthly high within the age range
-    currentTime = time
-    validHighFound = false
-    
-    // Look for a monthly high that's within our age criteria
-    for i = 1 to 50 // Reasonable lookback for monthly data
-        pastMonthlyHigh = monthlyHigh[i]
-        pastMonthlyTime = monthlyTime[i]
-        
-        if not na(pastMonthlyHigh) and not na(pastMonthlyTime)
-            ageDays = math.round((currentTime - pastMonthlyTime) / (24 * 60 * 60 * 1000))
-            
-            // Check if this high meets our age criteria
-            if ageDays >= breakoutMinAgeDays and ageDays <= breakoutMaxAgeDays
-                if not validHighFound or pastMonthlyHigh > validMonthlyHigh
-                    validMonthlyHigh := pastMonthlyHigh
-                    validMonthlyHighAge := ageDays
-                    validHighFound := true
+// 2. ATR and Core Technical Indicators Validation
+atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
 
-// Check if we crossed above the monthly high within specified days
-isRecentHighValid = not na(validMonthlyHigh)
-crossoverSignal = false
-if isRecentHighValid
-    // Check if we crossed above within the last N days
-    crossedRecently = false
-    for i = 0 to breakoutCrossWithinDays
-        if high[i] > validMonthlyHigh
-            crossedRecently := true
-            break
-    crossoverSignal := crossedRecently and close > validMonthlyHigh
+// 3. Trend Filter Data Validation (Primary + Reference Asset)
+trendDataValid = not na(trendSma) and trendSma > 0 and bar_index >= trendSmaLength
+referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and 
+                     referenceClose > 0 and referenceSma > 0 and bar_index >= trendSmaLength)
 
-// F-2: Traditional monthly breakout pathway
-traditionalBreakoutCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and isRecentHighValid and crossoverSignal
+// 4. Volume System Data Validation (F-2V Dependencies)
+volumeDataValid = not enableVolumeSpikeTrigger or (not na(volume) and volume >= 0 and 
+                  bar_index >= volumeLookbackPeriod)
 
-// F-2: Volume spike breakout pathway (alternative trigger)
-volumeSpikeBreakoutCondition = false
-if enableVolumeSpikeTrigger and enableBreakoutEntry and isTrendFilterPassed and isDataValid
+// 5. Monthly Donchian Data Validation (Critical F-2/F-3 Dependencies)
+// These request.security() calls are ESSENTIAL - no fallbacks allowed
+monthlyDataValid = not na(monthlyDonchianHigh) and not na(monthlyDonchianLow) and 
+                   monthlyDonchianHigh > 0 and monthlyDonchianLow > 0 and
+                   monthlyDonchianHigh > monthlyDonchianLow and  // Sanity: high > low
+                   monthlyDonchianHigh >= close[1] and monthlyDonchianLow <= close[1]  // Reasonable bounds
+
+// 6. Advanced Technical Calculations Validation
+// All ta.sma(), ta.highest(), ta.lowest() calls must be validated
+advancedTechnicalValid = true
+if enableVolumeSpikeTrigger and volumeDataValid
     avgVolume = ta.sma(volume, volumeLookbackPeriod)
-    currentVolumeIncrease = avgVolume > 0 ? ((volume - avgVolume) / avgVolume) * 100 : 0
-    priceMove = close > close[1] ? ((close - close[1]) / close[1]) * 100 : 0
+    advancedTechnicalValid := advancedTechnicalValid and not na(avgVolume) and avgVolume > 0
+
+if enableDynamicTrail and bar_index >= volatilityLookback
+    avgAtr = ta.sma(atr, volatilityLookback)  
+    advancedTechnicalValid := advancedTechnicalValid and not na(avgAtr) and avgAtr > 0
+
+// Swing low calculation used in stop loss logic
+recentSwingLow = ta.lowest(low, 10)
+advancedTechnicalValid := advancedTechnicalValid and not na(recentSwingLow) and recentSwingLow > 0
+
+// 7. Strategy System Validation
+strategyDataValid = strategy.equity > 0 and strategy.equity > 100 and  // Minimum account size
+                    not na(strategy.equity) and not na(strategy.position_size)
+
+// 8. Historical Data Sufficiency (ALL lookback periods + age validations)
+maxLookbackRequired = math.max(math.max(trendSmaLength, atrLength), 
+                      math.max(volumeLookbackPeriod, volatilityLookback))
+maxAgeRequired = math.max(breakoutMaxAgeDays, dipMaxAgeDays)
+// Ensure sufficient history for monthly data formation + age validation + all indicators
+historicalDataSufficient = bar_index >= (maxLookbackRequired + maxAgeRequired + 50) // Extra buffer
+
+// 9. Mathematical Safety Validation (Prevent Division by Zero)
+mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0 and
+                  (not useReferenceAsset or referenceClose > 0) and
+                  (not na(monthlyDonchianHigh) and monthlyDonchianHigh > 0) and
+                  (not na(monthlyDonchianLow) and monthlyDonchianLow > 0)
+
+// MASTER DATA VALIDATION: ALL systems must pass - NO EXCEPTIONS
+isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and 
+              volumeDataValid and monthlyDataValid and advancedTechnicalValid and 
+              strategyDataValid and historicalDataSufficient and mathSafetyValid
+
+// COMPREHENSIVE DEBUG LOGGING: Identify ALL data validation failures
+if showDebugInfo and not isDataValid
+    debugReason = ""
+    if not basicDataValid
+        debugReason := "BASIC_DATA_INVALID (OHLC or Volume issue)"
+    else if not atrDataValid
+        debugReason := na(atr) ? "ATR_NA" : atr <= 0 ? "ATR_ZERO" : "ATR_INSUFFICIENT_HISTORY"
+    else if not trendDataValid
+        debugReason := na(trendSma) ? "TREND_SMA_NA" : trendSma <= 0 ? "TREND_SMA_ZERO" : "TREND_SMA_INSUFFICIENT_HISTORY"
+    else if not referenceDataValid
+        debugReason := na(referenceClose) ? "REF_CLOSE_NA" : na(referenceSma) ? "REF_SMA_NA" : "REF_DATA_INVALID"
+    else if not volumeDataValid
+        debugReason := na(volume) ? "VOLUME_NA" : "VOLUME_INSUFFICIENT_HISTORY"
+    else if not monthlyDataValid
+        debugReason := na(monthlyDonchianHigh) ? "MONTHLY_HIGH_NA" : na(monthlyDonchianLow) ? "MONTHLY_LOW_NA" : "MONTHLY_DATA_BOUNDS_INVALID"
+    else if not advancedTechnicalValid
+        debugReason := "ADVANCED_TECHNICAL_INVALID (avgVolume, avgAtr, or recentSwingLow)"
+    else if not strategyDataValid
+        debugReason := "STRATEGY_SYSTEM_INVALID (equity or position_size)"
+    else if not historicalDataSufficient
+        debugReason := "INSUFFICIENT_HISTORICAL_DATA (need " + str.tostring(maxLookbackRequired + maxAgeRequired + 50) + " bars, have " + str.tostring(bar_index) + ")"
+    else if not mathSafetyValid
+        debugReason := "MATH_SAFETY_INVALID (division by zero risk)"
+    else
+        debugReason := "UNKNOWN_DATA_ISSUE"
     
-    // Volume spike with minimum price movement (above 200 SMA)
-    volumeSpikeBreakoutCondition := currentVolumeIncrease >= volumeThresholdPercent and priceMove >= volumeSpikeMinMove and close > trendSma
+    log.warning("COMPREHENSIVE_DATA_VALIDATION_FAILED: " + debugReason + 
+               " | Bar: " + str.tostring(bar_index) + 
+               " | ATR: " + str.tostring(atr) + 
+               " | TrendSMA: " + str.tostring(trendSma) +
+               " | MonthlyHigh: " + str.tostring(monthlyDonchianHigh) + 
+               " | MonthlyLow: " + str.tostring(monthlyDonchianLow) +
+               " | Volume: " + str.tostring(volume) +
+               " | Equity: " + str.tostring(strategy.equity))
 
-// Combined breakout condition (OR logic - either pathway can trigger)
-breakoutEntryCondition = traditionalBreakoutCondition or volumeSpikeBreakoutCondition
+// ——————————————————————————————————————————————————————————————————————————————————————————————
+// |                                E N T R Y   T R I G G E R S                                 |
+// ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// --- F-3: DIP BUY ENTRY ---
-// Get monthly lows data
-monthlyLow = request.security(syminfo.tickerid, dipBuyTimeframe, low, lookahead=barmerge.lookahead_off)
-monthlyLowTime = request.security(syminfo.tickerid, dipBuyTimeframe, time, lookahead=barmerge.lookahead_off)
+// --- DONCHIAN CHANNEL CALCULATIONS ---
+// REQUEST.SECURITY() for higher timeframe data - can be na during early bars or data issues
+monthlyDonchianHigh = request.security(syminfo.tickerid, breakoutTimeframe, ta.highest(high, monthlyDonchianPeriod), lookahead=barmerge.lookahead_off)
+monthlyDonchianLow = request.security(syminfo.tickerid, dipBuyTimeframe, ta.lowest(low, monthlyDipDonchianPeriod), lookahead=barmerge.lookahead_off)
 
-// Find valid monthly low that meets age criteria
-var float validMonthlyLow = na
-var int validMonthlyLowAge = na
+// NOTE: Monthly data validation is now handled in the comprehensive validation section above
 
-if (enableDipBuyEntry)
-    currentTime = time
-    validLowFound = false
+// ============================================================================================
+// F-2: SYSTEM 1 - DONCHIAN MONTHLY HIGH BREAKOUT OR VOLUME SPIKE + PRICE RISE
+// ============================================================================================
+
+// F-2D: Donchian Channel Monthly High Breakout with Age Validation
+donchianBreakout = false
+if enableBreakoutEntry and monthlyDataValid
+    // Current breakout condition
+    currentBreakout = close > monthlyDonchianHigh
     
-    // Look for a monthly low that's within our age criteria
-    for i = 1 to 50 // Reasonable lookback for monthly data
-        pastMonthlyLow = monthlyLow[i]
-        pastMonthlyTime = monthlyLowTime[i]
+    if currentBreakout
+        // Find when the Donchian high was formed
+        barsBackToHigh = 0
+        highFormationFound = false
         
-        if not na(pastMonthlyLow) and not na(pastMonthlyTime)
-            ageDays = math.round((currentTime - pastMonthlyTime) / (24 * 60 * 60 * 1000))
+        // Look back to find when this high was established
+        for i = 1 to 252 // One year lookback maximum
+            pastHigh = monthlyDonchianHigh[i]
+            if na(pastHigh) or pastHigh != monthlyDonchianHigh
+                barsBackToHigh := i - 1
+                highFormationFound := true
+                break
+        
+        if highFormationFound
+            // Convert bars to approximate days (assuming daily timeframe)
+            daysOld = barsBackToHigh
             
-            // Check if this low meets our age criteria
-            if ageDays >= dipMinAgeDays and ageDays <= dipMaxAgeDays
-                if not validLowFound or pastMonthlyLow < validMonthlyLow
-                    validMonthlyLow := pastMonthlyLow
-                    validMonthlyLowAge := ageDays
-                    validLowFound := true
+            // Age validation: High must be within acceptable age range
+            ageValid = daysOld >= breakoutMinAgeDays and daysOld <= breakoutMaxAgeDays
+            
+            // Cross timing validation: Must have crossed within specified days
+            recentCross = ta.barssince(ta.crossover(close, monthlyDonchianHigh)) <= breakoutCrossWithinDays
+            
+            donchianBreakout := ageValid and (recentCross or currentBreakout)
 
-// Check if we touched the monthly low and recovered within specified days  
-isDipRecovering = false
-if not na(validMonthlyLow)
-    // Check if we touched the low recently
-    touchedLow = false
-    for i = 0 to dipRecoveryWithinDays
-        if low[i] <= validMonthlyLow * 1.001 // Allow 0.1% tolerance for "touch"
-            touchedLow := true
-            break
+// F-2V: Volume Spike + Price Rise (Alternative High-Conviction Trigger)
+volumeSpikeBreakout = false
+if enableVolumeSpikeTrigger and volumeDataValid and advancedTechnicalValid
+    avgVolume = ta.sma(volume, volumeLookbackPeriod)
     
-    // Check if we're now recovering (close above the low)
-    isDipRecovering := touchedLow and close > validMonthlyLow
+    // avgVolume validation already handled in comprehensive validation
+    // Check for volume spike ≥50% AND cumulative price rise ≥2% within configurable windows
+    volumeSpikeInWindow = false
+    priceRiseInWindow = false
+    
+    // Check for volume spike within configurable window
+    for i = 0 to (volumeSpikeWindowDays - 1)
+        if i < bar_index and not na(volume[i]) and not na(avgVolume[i]) and avgVolume[i] > 0
+            volumeIncrease = ((volume[i] - avgVolume[i]) / avgVolume[i]) * 100
+            if volumeIncrease >= volumeThresholdPercent
+                volumeSpikeInWindow := true
+    
+    // Check for cumulative price rise over configurable 3-5 day window
+    // Compare current price to prices within the specified range
+    for lookback = priceRiseMinDays to priceRiseMaxDays
+        if lookback < bar_index and not na(close[lookback]) and close[lookback] > 0
+            priceChange = ((close - close[lookback]) / close[lookback]) * 100
+            if priceChange >= volumeSpikeMinMove
+                priceRiseInWindow := true
+    
+    volumeSpikeBreakout := volumeSpikeInWindow and priceRiseInWindow
 
-dipBuyEntryCondition = enableDipBuyEntry and isTrendFilterPassed and isDataValid and isDipRecovering
+// F-2 Combined: Either F-2D or F-2V triggers entry
+breakoutEntryCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and 
+                        (donchianBreakout or volumeSpikeBreakout)
+
+// Track which breakout method triggered for risk management logic
+traditionalMonthlyDonchianBreakout = donchianBreakout
+
+// Define additional variables needed for UI table (prevent compilation errors)
+monthlyTrendBullish = isTrendBullish // Simplified trend status
+marketRegimeBullish = isTrendFilterPassed // Market regime based on combined filters  
+monthlyTrendBias = isTrendBullish // Monthly bias matches trend direction
+
+// ============================================================================================
+// F-3: SYSTEM 2 - MONTHLY LOW DIP RECOVERY USING DONCHIAN CHANNEL
+// ============================================================================================
+
+// F-3D: Donchian Channel Monthly Low Recovery with Age Validation
+dipRecoveryCondition = false
+if enableDipBuyEntry and monthlyDataValid
+    // Check if we've touched the monthly low recently and are now recovering
+    dipTouchMultiplier = 1.0 + (dipTouchBuffer / 100.0)
+    dipRecoveryMultiplier = 1.0 + (dipRecoveryBuffer / 100.0)
+    recentTouchOfLow = ta.barssince(low <= monthlyDonchianLow * dipTouchMultiplier) <= dipRecoveryWithinDays
+    currentlyRecovering = close > monthlyDonchianLow * dipRecoveryMultiplier
+    
+    if recentTouchOfLow and currentlyRecovering
+        // Find when the Donchian low was formed
+        barsBackToLow = 0
+        lowFormationFound = false
+        
+        // Look back to find when this low was established
+        for i = 1 to 252 // One year lookback maximum
+            pastLow = monthlyDonchianLow[i]
+            if na(pastLow) or pastLow != monthlyDonchianLow
+                barsBackToLow := i - 1
+                lowFormationFound := true
+                break
+        
+        if lowFormationFound
+            // Convert bars to approximate days (assuming daily timeframe)
+            daysOld = barsBackToLow
+            
+            // Age validation: Low must be within acceptable age range
+            ageValid = daysOld >= dipMinAgeDays and daysOld <= dipMaxAgeDays
+            
+            dipRecoveryCondition := ageValid and recentTouchOfLow and currentlyRecovering
+
+// F-3 Final Condition: F-3D triggers entry
+dipBuyEntryCondition = enableDipBuyEntry and isTrendFilterPassed and isDataValid and dipRecoveryCondition
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                    R I S K   M A N A G E M E N T                             |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
+// --- ASSET-SPECIFIC RISK ADJUSTMENTS (Per Parameter Specification) ---
+// PARAMETER COMPLIANCE: Only risk adjustments are specified in jon-parameters.mdc
+// Trail multiplier adjustments are NOT authorized in parameter specification
+
+// Dynamic volatility adjustment with proper data validation
+volatilityAdjustment = 1.0
+if enableDynamicTrail and atrDataValid and bar_index >= volatilityLookback and advancedTechnicalValid
+    avgAtr = ta.sma(atr, volatilityLookback)
+    // avgAtr validation already handled in comprehensive validation - safe to use
+    volatilityRatio = atr / avgAtr
+    volatilityAdjustment := volatilityRatio > 1.2 ? 1.3 : volatilityRatio < 0.8 ? 0.7 : 1.0
+
+// Use base trail multiplier with only authorized dynamic volatility adjustment
+adjustedAtrTrailMultiplier = atrTrailMultiplier * volatilityAdjustment
+
 // --- R-1: POSITION SIZING ---
 unitRiskAmountDollars = strategy.equity * (adjustedUnitRiskPercent / 100.0)
 
-// Fixed function definition for v6 - removed 'method' keyword (TURTLE UNIT SIZING)
+// @function Calculates position size based on ATR risk and account equity
+// @param entryPrice Current entry price level
+// @param stopLossPrice Initial stop loss price level
+// @returns Position size in units/shares with safety validation
 calculateUnitSize(entryPrice, stopLossPrice) =>
-    if (na(entryPrice) or na(stopLossPrice) or unitRiskAmountDollars <= 0)
+    // Enhanced error prevention following Pine Script standards
+    if (na(entryPrice) or na(stopLossPrice) or unitRiskAmountDollars <= 0 or entryPrice <= 0)
         0.0
     else
         riskPerShare = math.abs(entryPrice - stopLossPrice)
-        unitValue = riskPerShare > 0 ? unitRiskAmountDollars / riskPerShare : 0.0
-        // R-1 Validation: Max 95% of equity, Min $100
-        maxUnitValue = strategy.equity * 0.95
-        math.min(unitValue, maxUnitValue / entryPrice) * entryPrice >= 100 ? unitValue : 0.0
+        
+        // Prevent division by zero - critical safety check
+        if riskPerShare <= 0 or riskPerShare >= entryPrice
+            0.0
+        else
+            unitValue = unitRiskAmountDollars / riskPerShare
+            
+            // R-1 Validation: Max 95% of equity, Min $100 position
+            maxUnitValue = strategy.equity * 0.95
+            minPositionValue = 100.0
+            
+            // Ensure position meets minimum size and doesn't exceed max equity
+            validUnitValue = math.min(unitValue, maxUnitValue)
+            
+            // Apply floor function - round down to whole units for practical trading
+            wholeUnitValue = math.floor(validUnitValue)
+            
+            // Final validation: ensure minimum position value is met with whole units
+            (wholeUnitValue * entryPrice) >= minPositionValue ? wholeUnitValue : 0.0
 
 // --- R-2: STOP LOSS ---
-// Enhanced stop loss calculation with correlation features
+// @function Enhanced stop loss calculation with correlation features
+// @param entryPrice Current entry price level
+// @param entryType "BREAKOUT" or "DIP_BUY" for correlation logic
+// @returns Stop loss price respecting correlation settings and safety limits
 calculateInitialStopLoss(entryPrice, entryType) =>
-    // Base ATR stop loss
-    atrStopPrice = entryPrice - (atr * stopLossMultiplier)
-    
-    // Get contextual reference levels
-    recentSwingLow = ta.lowest(low, 10) * 0.995
-    monthlyLowRef = not na(validMonthlyLow) ? validMonthlyLow * 0.99 : atrStopPrice
-    
-    // Apply correlation logic based on entry type
-    finalStopPrice = atrStopPrice
-    
-    if entryType == "BREAKOUT"
-        if correlateUnit1
-            // For correlated Unit 1 breakouts, use looser of ATR or swing low for maximum breathing room
-            finalStopPrice := math.min(atrStopPrice, recentSwingLow)
-    else if entryType == "DIP_BUY"
-        if correlateUnit1
-            // For correlated Unit 1 dip buys, use looser of ATR or monthly low for maximum breathing room
-            finalStopPrice := math.min(atrStopPrice, monthlyLowRef)
-    
-    // Apply minimum stop distance if enabled
-    if minSLDist
-        minDistancePrice = entryPrice * 0.98 // Minimum 2% stop distance
-        finalStopPrice := math.min(finalStopPrice, minDistancePrice)
-    
-    finalStopPrice
+    // CRITICAL: This function should only be called when isDataValid = true
+    // If ANY data is invalid, master validation should prevent trading entirely
+    if na(entryPrice) or entryPrice <= 0 or na(atr) or atr <= 0 or not isDataValid
+        // This should NEVER happen if master validation is working correctly
+        if showDebugInfo
+            log.error("CRITICAL ERROR: calculateInitialStopLoss called with invalid data! EntryPrice=" + str.tostring(entryPrice) + " ATR=" + str.tostring(atr) + " isDataValid=" + str.tostring(isDataValid))
+        na  // Return na to prevent trading
+    else
+        // Base ATR stop loss (ATR guaranteed valid by master validation)
+        atrStopPrice = entryPrice - (atr * stopLossMultiplier)
+        
+        // Get contextual reference levels with configurable buffers
+        // recentSwingLow already validated in comprehensive validation section
+        swingLowMultiplier = 1.0 - (swingLowBuffer / 100.0)
+        monthlyLowMultiplier = 1.0 - (monthlyLowBuffer / 100.0)
+        swingLowRef = recentSwingLow * swingLowMultiplier
+        monthlyLowRef = not na(monthlyDonchianLow) ? monthlyDonchianLow * monthlyLowMultiplier : atrStopPrice
+        
+        // Apply correlation logic based on entry type
+        finalStopPrice = atrStopPrice
+        
+        if entryType == "BREAKOUT"
+            if correlateUnit1
+                // For maximum breathing room, use LOWER stop (further from price)
+                // swingLowRef should be below entry, so min() gives more breathing room
+                finalStopPrice := math.min(atrStopPrice, swingLowRef)
+        else if entryType == "DIP_BUY"
+            if correlateUnit1
+                // For maximum breathing room, use LOWER stop (further from price)  
+                // monthlyLowRef should be below entry, so min() gives more breathing room
+                finalStopPrice := math.min(atrStopPrice, monthlyLowRef)
+        
+        // Apply minimum stop distance if enabled - ensure stop is not too tight
+        if minSLDist
+            minDistanceMultiplier = 1.0 - (minStopDistance / 100.0)
+            minDistancePrice = entryPrice * minDistanceMultiplier
+            finalStopPrice := math.min(finalStopPrice, minDistancePrice)
+        
+        // Final safety validation - ensure stop is below entry price for long positions
+        math.min(finalStopPrice, entryPrice * 0.95) // Never closer than 5% from entry
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                    E X I T   S T R A T E G Y                                 |
@@ -316,13 +504,13 @@ var float profitActivationLevel = na
 var float initialStopPrice = na
 
 // --- F-4: ENHANCED EXIT SYSTEM UPDATE LOGIC ---
-if strategy.position_size > 0
+if strategy.position_size > 0 and atrDataValid
     entryPrice = strategy.position_avg_price
     currentProfit = close - entryPrice
-    profitInATR = currentProfit / atr
+    profitInATR = atr > 0 ? currentProfit / atr : 0.0
     
-    // Initialize initial stop price tracking
-    if na(initialStopPrice)
+    // CRITICAL FIX: Initialize initial stop price tracking properly
+    if na(initialStopPrice) and not na(currentStopPrice)
         initialStopPrice := currentStopPrice
     
     if exitMode == "ATR Trail"
@@ -392,6 +580,7 @@ var int currentPyramidCount = 0
 var float lastPyramidPrice = na
 
 // --- ENTRY EXECUTION (TURTLE UNIT SYSTEM) ---
+// PROPER PINE SCRIPT: Variables initialized to na, calculated conditionally
 if (strategy.position_size == 0 and isDataValid)
     float initialStop = na
     float unitSize = na
@@ -399,28 +588,43 @@ if (strategy.position_size == 0 and isDataValid)
 
     if breakoutEntryCondition
         initialStop := calculateInitialStopLoss(close, "BREAKOUT")
-        unitSize := calculateUnitSize(close, initialStop)
-        entryId := "Unit 1 Long"
-        // Track breakout entry for F-5 opportunistic exit
-        breakoutEntryPrice := close
-        breakoutEntryBar := bar_index
-        isBreakoutPosition := true
+        // PROPER VALIDATION: Ensure we have a valid stop loss and it's below entry
+        if not na(initialStop) and initialStop < close
+            unitSize := calculateUnitSize(close, initialStop)
+            entryId := "Unit 1 Long"
+            // Track breakout entry for F-5 opportunistic exit
+            breakoutEntryPrice := close
+            breakoutEntryBar := bar_index
+            isBreakoutPosition := true
     else if dipBuyEntryCondition
         initialStop := calculateInitialStopLoss(close, "DIP_BUY")
-        unitSize := calculateUnitSize(close, initialStop)
-        entryId := "Unit 1 Long"
-        // Dip buy entries don't use opportunistic exit
-        isBreakoutPosition := false
+        // PROPER VALIDATION: Ensure we have a valid stop loss and it's below entry
+        if not na(initialStop) and initialStop < close
+            unitSize := calculateUnitSize(close, initialStop)
+            entryId := "Unit 1 Long"
+            // Dip buy entries don't use opportunistic exit
+            isBreakoutPosition := false
 
-    if unitSize > 0
-        strategy.entry(entryId, strategy.long, qty=unitSize)
-        currentStopPrice := initialStop // Set the initial hard stop
+    // PROPER VALIDATION: Ensure unit size is valid and meets risk requirements
+    if not na(unitSize) and unitSize > 0 and not na(initialStop)
+        // Final risk validation using adjusted unit risk
+        calculatedRisk = (unitSize * math.abs(close - initialStop)) / strategy.equity * 100
+        if calculatedRisk <= adjustedUnitRiskPercent * 1.1 // Allow 10% tolerance for rounding
+            strategy.entry(entryId, strategy.long, qty=unitSize)
+            currentStopPrice := initialStop // Set the initial hard stop
+            
+            // Risk management logging following Pine Script standards
+            if showDebugInfo
+                log.info("ENTRY: " + entryId + " | Price=" + str.tostring(close, "#.##") + 
+                        " | Stop=" + str.tostring(initialStop, "#.##") + 
+                        " | Risk=" + str.tostring(calculatedRisk, "#.##") + "%" +
+                        " | Size=" + str.tostring(unitSize, "#.##"))
 
 // --- R-4: TURTLE UNIT PYRAMIDING EXECUTION ---
-if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries)
-    // Calculate profit in N (ATR) terms from entry
+if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries and atrDataValid)
+    // Calculate profit in N (ATR) terms from entry with ATR validation
     entryPrice = strategy.position_avg_price
-    profitInN = (close - entryPrice) / atr
+    profitInN = atr > 0 ? (close - entryPrice) / atr : 0.0
     
     // Determine ATR threshold for next unit (1×ATR spacing default)
     nextUnitThreshold = (currentPyramidCount + 1) * pyramidSpacingATR
@@ -434,9 +638,12 @@ if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < ma
     // Check for new entry signals while in position
     pyramidCondition = atrThresholdMet and priceDistanceOk and (breakoutEntryCondition or dipBuyEntryCondition)
     
-    // TURTLE RISK CHECK: Ensure we don't exceed max trade risk
-    currentTradeRisk = strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100
-    wouldExceedMaxRisk = currentTradeRisk + adjustedUnitRiskPercent > maxTradeRiskPercent
+    // TURTLE RISK CHECK: Ensure we don't exceed max trade risk using adjusted parameters
+    if not na(currentStopPrice) and strategy.equity > 0
+        currentTradeRisk = strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100
+        wouldExceedMaxRisk = currentTradeRisk + adjustedUnitRiskPercent > maxTradeRiskPercent
+    else
+        wouldExceedMaxRisk = true // Safety: block pyramiding if can't calculate risk
     
     if pyramidCondition and not wouldExceedMaxRisk
         // Apply correlation logic for additional units
@@ -456,6 +663,13 @@ if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < ma
             strategy.entry(unitId, strategy.long, qty=unitSize)
             currentPyramidCount := currentPyramidCount + 1
             lastPyramidPrice := close
+            
+            // Risk management logging for pyramid entries
+            if showDebugInfo
+                totalRisk = (currentPyramidCount + 1) * adjustedUnitRiskPercent
+                log.info("PYRAMID: " + unitId + " | Price=" + str.tostring(close, "#.##") + 
+                        " | TotalRisk=" + str.tostring(totalRisk, "#.##") + "%" +
+                        " | ProfitATR=" + str.tostring(profitInN, "#.##"))
             
             // Update stop to protect new unit with correlation
             if correlateAdditionalUnits
@@ -478,18 +692,22 @@ if (enableOpportunisticExit and strategy.position_size > 0 and isBreakoutPositio
     // Extract ta.highest call from conditional scope for consistency
     highSinceEntry = ta.highest(high, barsSinceEntry)
     
-    // F-5: Exit if breakout fails to make new high within timeout
+    // F-5: Exit if breakout fails to make new high within timeout (uses configurable parameters)
     if barsSinceEntry >= failedBreakoutBars
-        if highSinceEntry <= breakoutEntryPrice * 1.005 // No meaningful follow-through (0.5% threshold)
+        followThroughMultiplier = 1.0 + (breakoutFollowThrough / 100.0)
+        if highSinceEntry <= breakoutEntryPrice * followThroughMultiplier
             failedBreakoutExit := true
     
     // F-5: Exit if close falls below entry with correlation consideration
-    exitThreshold = correlateUnit1 ? breakoutEntryPrice * 0.98 : breakoutEntryPrice * 0.97
+    correlatedMultiplier = 1.0 - (correlatedExitBuffer / 100.0)
+    uncorrelatedMultiplier = 1.0 - (uncorrelatedExitBuffer / 100.0)
+    exitThreshold = correlateUnit1 ? breakoutEntryPrice * correlatedMultiplier : breakoutEntryPrice * uncorrelatedMultiplier
     if close < exitThreshold
         failedBreakoutExit := true
     
-    // F-5: Exit if monthly high reference is lost (enhanced with age validation)
-    if not na(validMonthlyHigh) and close < validMonthlyHigh * 0.995
+    // F-5: Exit if monthly Donchian channel is lost 
+    donchianBufferMultiplier = 1.0 - (donchianChannelBuffer / 100.0)
+    if not na(monthlyDonchianHigh) and close < monthlyDonchianHigh * donchianBufferMultiplier
         failedBreakoutExit := true
 
 // --- EXIT EXECUTION ---
@@ -518,172 +736,41 @@ if strategy.position_size == 0
 // |                                V I S U A L   I N T E R F A C E (UI)                        |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// --- CLEAN TREND VISUALIZATION ---
-// UI-1 Requirement: 200 SMA - Green (bull), red (bear), 20% transparency
-smaColor = isTrendBullish ? color.new(color.green, 20) : color.new(color.red, 20)
-plot(showTrendSma ? trendSma : na, "200 SMA", color=smaColor, linewidth=2)
+// --- ESSENTIAL TRADING VISUALS ONLY ---
 
-// --- SINGLE STOP LOSS LINE ---
-// One clear, continuous stop loss line - shows step-wise pyramiding and smooth trailing motion
+// Stop Loss Line - Single, clear line showing current stop
 plot(strategy.position_size > 0 ? currentStopPrice : na, "Stop Loss", color=color.red, linewidth=2)
 
-
-
-// --- CLEAN CODED ENTRY/EXIT MARKERS ---
-// Entry markers: Small neon arrows with coded text
-var string lastEntryType = na
-var string entryCode = na
-if strategy.position_size > 0 and strategy.position_size[1] == 0
-    if breakoutEntryCondition
-        lastEntryType := "BREAKOUT"
-        entryCode := traditionalBreakoutCondition ? "T1-F2B" : "T1-F2V" // Traditional vs Volume spike breakout
-    else if dipBuyEntryCondition  
-        lastEntryType := "DIP_BUY"
-        entryCode := "T1-F3"
-
-// Entry arrow - consistent dark blue color
-entryCondition = showTradeLabels and strategy.position_size > 0 and strategy.position_size[1] == 0
-plotshape(entryCondition, "Entry", shape.triangleup, location.belowbar, color.new(color.blue, 30), size=size.tiny)
-
-// Exit markers: Coded text with stacking for trail exits
-var label exitLabel = na
-var int exitStackCount = 0
-
-if showTradeLabels and strategy.position_size == 0 and strategy.position_size[1] > 0 and not na(exitReason)
-    label.delete(exitLabel[1])
-    
-    // Generate exit code
-    exitCode = exitReason == "STOP LOSS" ? "T1-SL" : 
-               exitReason == "ATR TRAIL" ? "T1-F4" : 
-               exitReason == "FAILED BREAKOUT" ? "T1-F5" : 
-               exitReason == "BEAR MARKET" ? "T1-F1" : "T1-EXIT"
-    
-    exitColor = color.new(color.orange, 30) // Consistent dark orange for all exits
-    
-    // Handle stacking for trail exits (when multiple units close)
-    stackOffset = 0.0
-    if exitReason == "ATR TRAIL" and currentPyramidCount > 0
-        // Calculate number of units that were open
-        unitsOpen = currentPyramidCount + 1
-        // Stack markers vertically for each unit
-        for i = 1 to unitsOpen
-            unitExitCode = "T" + str.tostring(i) + "-F4"
-            stackHeight = high + (atr * 0.3 * (i - 1)) // Stack with 0.3 ATR spacing
-            unitLabel = label.new(bar_index, stackHeight, unitExitCode, style=label.style_label_down, color=exitColor, textcolor=color.white, size=size.tiny)
-    else
-        // Single exit marker for non-trail exits
-        exitLabel := label.new(bar_index, high, exitCode, style=label.style_label_down, color=exitColor, textcolor=color.white, size=size.tiny)
-
-// --- GLOBAL SCOPE CALCULATIONS FOR DEBUG INDICATORS ---
-// Calculate debug conditions at global scope to avoid local plotting issues
-unitReadyCondition = showDebugInfo and enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries and ((close - strategy.position_avg_price) / atr) >= ((currentPyramidCount + 1) * pyramidSpacingATR)
-
-// --- ALL PLOTTING FUNCTIONS AT GLOBAL SCOPE ---
-// TRADE LABELS REMOVED FOR CLEANER CHART
-// (Labels disabled - only keeping minimal arrow signals)
-
-// DEBUG PLOTTING FUNCTIONS - All at global scope
-// Unit addition readiness indicator
-plotshape(unitReadyCondition, title="Unit Ready", location=location.top, 
-         color=color.new(color.yellow, 70), style=shape.circle, size=size.tiny)
-
-// Clean trend filter background with better text positioning
-bgcolor(showDebugInfo and not isTrendFilterPassed ? color.new(color.red, 95) : na, title="Bear Market")
-
-// Entry condition indicators with better spacing
-plotchar(showDebugInfo and traditionalBreakoutCondition, title="Monthly Breakout", char="↗", 
-         location=location.belowbar, color=color.new(color.blue, 40), size=size.small)
-
-plotchar(showDebugInfo and volumeSpikeBreakoutCondition, title="Volume Spike", char="V", 
-         location=location.belowbar, color=color.new(color.yellow, 40), size=size.small)
-
-plotchar(showDebugInfo and dipBuyEntryCondition, title="Dip Buy", char="↙", 
-         location=location.belowbar, color=color.new(color.purple, 40), size=size.small)
-
-// Monthly reference levels (debug)
-plot(showDebugInfo and not na(validMonthlyHigh) ? validMonthlyHigh : na, 
-     "Monthly High Reference", color=color.new(color.blue, 70), linewidth=1, style=plot.style_linebr)
-
-plot(showDebugInfo and not na(validMonthlyLow) ? validMonthlyLow : na, 
-     "Monthly Low Reference", color=color.new(color.purple, 70), linewidth=1, style=plot.style_linebr)
-
-// Trailing activation indicator
-plotshape(showDebugInfo and trailStartActivated and strategy.position_size > 0, 
-          title="Trail Activated", location=location.top, color=color.new(color.orange, 60), 
-          style=shape.diamond, size=size.tiny)
-
-// --- PERSISTENT TRADING ZONES ---
-// Show profit/risk zones for entire duration of each trade (entry to exit)
+// Profit/Risk Zones - Background colors during trades
 tradeIsActive = strategy.position_size > 0
 profitZoneColor = tradeIsActive and close > strategy.position_avg_price ? color.new(color.green, 95) : na
 riskZoneColor = tradeIsActive and close < currentStopPrice ? color.new(color.red, 95) : na
 
-// Background zones persist throughout each trade duration
 bgcolor(showStopLevels ? profitZoneColor : na, title="Profit Zone")
 bgcolor(showStopLevels ? riskZoneColor : na, title="Risk Zone")
 
-// Subtle background when not in position
-bgcolor(strategy.position_size == 0 ? color.new(color.white, 98) : na)
+// Entry Arrows with Strategy Labels
+var string entryLabel = na
+if strategy.position_size > 0 and strategy.position_size[1] == 0
+    if breakoutEntryCondition
+        entryLabel := traditionalMonthlyDonchianBreakout ? "F-2D" : "F-2V"
+    else if dipBuyEntryCondition  
+        entryLabel := "F-3D"
 
-// --- SYSTEMATIC UI TABLE ---
-// Clean system status display with no price anchors
-if barstate.islast and showTradeLabels
-    var table systemTable = table.new(position.top_right, 2, 8, 
-                                     bgcolor=color.new(color.white, 85), 
-                                     border_width=1,
-                                     border_color=color.new(color.gray, 50))
+// Entry marker with label
+entryCondition = showTradeLabels and strategy.position_size > 0 and strategy.position_size[1] == 0
+plotshape(entryCondition, "Entry", shape.triangleup, location.belowbar, color.new(color.blue, 30), size=size.small)
+if entryCondition and not na(entryLabel)
+    label.new(bar_index, low, entryLabel, style=label.style_label_up, color=color.new(color.blue, 30), textcolor=color.white, size=size.small)
+
+// Exit Arrows with Strategy Labels  
+var string exitLabel = na
+if showTradeLabels and strategy.position_size == 0 and strategy.position_size[1] > 0 and not na(exitReason)
+    exitLabel := exitReason == "STOP LOSS" ? "SL" : 
+                 exitReason == "ATR TRAIL" ? "F-4" : 
+                 exitReason == "FAILED BREAKOUT" ? "F-5" : 
+                 exitReason == "BEAR MARKET" ? "F-1" : "EXIT"
     
-    // Calculate system metrics
-    trendStatus = isTrendFilterPassed ? "BULL" : "BEAR"
-    currentSignal = breakoutEntryCondition ? "BREAKOUT" : dipBuyEntryCondition ? "DIP_BUY" : "WAIT"
-    
-    // Position metrics
-    currentUnits = strategy.position_size > 0 ? currentPyramidCount + 1 : 0
-    maxUnits = maxPyramidEntries + 1
-    currentRisk = strategy.position_size > 0 ? (currentUnits * adjustedUnitRiskPercent) : 0.0
-    
-    // Profit in ATR terms (no price anchoring)
-    profitATR = strategy.position_size > 0 and atr > 0 ? (close - strategy.position_avg_price) / atr : 0.0
-    
-    // Trail status
-    trailStatus = strategy.position_size > 0 ? (trailStartActivated ? "ACTIVE" : "PENDING") : "INACTIVE"
-    trailValue = strategy.position_size > 0 ? 
-                 (trailStartActivated ? 
-                  (atrTrailHigh - atrTrailStop) / atr : 
-                  trailStartProfitMultiplier) : 0.0
-    
-    // Header
-    table.cell(systemTable, 0, 0, "JON SYSTEM", text_color=color.white, text_size=size.normal, 
-               bgcolor=color.new(color.blue, 20))
-    table.cell(systemTable, 1, 0, "", text_color=color.white, text_size=size.normal, 
-               bgcolor=color.new(color.blue, 20))
-    
-    // System status rows
-    table.cell(systemTable, 0, 1, "Trend", text_color=color.black, text_size=size.small)
-    table.cell(systemTable, 1, 1, trendStatus, text_color=isTrendFilterPassed ? color.green : color.red, text_size=size.small)
-    
-    table.cell(systemTable, 0, 2, "Signal", text_color=color.black, text_size=size.small)
-    table.cell(systemTable, 1, 2, currentSignal, 
-               text_color=currentSignal == "WAIT" ? color.gray : color.blue, text_size=size.small)
-    
-    table.cell(systemTable, 0, 3, "Units", text_color=color.black, text_size=size.small)
-    table.cell(systemTable, 1, 3, str.tostring(currentUnits) + "/" + str.tostring(maxUnits), 
-               text_color=strategy.position_size > 0 ? color.blue : color.gray, text_size=size.small)
-    
-    table.cell(systemTable, 0, 4, "Risk", text_color=color.black, text_size=size.small)
-    table.cell(systemTable, 1, 4, str.tostring(currentRisk, "#.#") + "%", 
-               text_color=currentRisk > 0 ? color.orange : color.gray, text_size=size.small)
-    
-    table.cell(systemTable, 0, 5, "Profit", text_color=color.black, text_size=size.small)
-    table.cell(systemTable, 1, 5, str.tostring(profitATR, "#.#") + " ATR", 
-               text_color=profitATR > 0 ? color.green : profitATR < 0 ? color.red : color.gray, text_size=size.small)
-    
-    table.cell(systemTable, 0, 6, "Trail", text_color=color.black, text_size=size.small)
-    table.cell(systemTable, 1, 6, trailStatus, 
-               text_color=trailStartActivated ? color.orange : color.gray, text_size=size.small)
-    
-    // Trail distance or trigger level
-    trailLabel = trailStartActivated ? "Distance" : "Trigger"
-    trailText = str.tostring(trailValue, "#.#") + " ATR"
-    table.cell(systemTable, 0, 7, trailLabel, text_color=color.black, text_size=size.small)
-    table.cell(systemTable, 1, 7, trailText, text_color=color.purple, text_size=size.small)
+    // Exit marker with label
+    plotshape(true, "Exit", shape.triangledown, location.abovebar, color.new(color.orange, 30), size=size.small)
+    label.new(bar_index, high, exitLabel, style=label.style_label_down, color=color.new(color.orange, 30), textcolor=color.white, size=size.small)
