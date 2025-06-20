@@ -1,7 +1,7 @@
-// © 2025 JON Systems - MTP BETA v4 HIGH PERFORMANCE
+// © 2025 JON Systems - MTP HIGH PERFORMANCE
 //@version=6
-strategy("JON - MTP BETA v4 Universal HTF Trend Following",
-     shorttitle="JON-MTP-v4-UNIVERSAL",
+strategy("JON - MTP Universal HTF Trend Following",
+     shorttitle="JON-MTP-UNIVERSAL",
      overlay=true,
      pyramiding=4,
      default_qty_type=strategy.fixed,
@@ -43,8 +43,7 @@ strategy("JON - MTP BETA v4 Universal HTF Trend Following",
 // |                                  I N P U T   P A R A M E T E R S                           |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// --- R-0: ROBUSTNESS SETTINGS (CRITICAL FOR MULTI-ASSET/TIMEFRAME) ---
-baseTF = input.timeframe("1D", "Base Timeframe", group = "Robustness (R-0)", tooltip = "All strategy logic runs on this timeframe regardless of chart TF")
+// --- R-0: ROBUSTNESS SETTINGS ---
 enableFuturesMode = input.bool(true, "Enable Futures Position Sizing", group = "Robustness (R-0)", tooltip = "Use contract point value for proper futures risk calculation")
 
 // --- F-1: TREND FILTER SETTINGS ---
@@ -109,21 +108,16 @@ showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings")
 // |                                  C O R E   I N D I C A T O R S                             |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// ROBUSTNESS FIX #1: Time-frame abstraction - all logic runs on baseTF regardless of chart
-baseTF_close = request.security(syminfo.tickerid, baseTF, close, lookahead=barmerge.lookahead_off)
-baseTF_high = request.security(syminfo.tickerid, baseTF, high, lookahead=barmerge.lookahead_off)
-baseTF_low = request.security(syminfo.tickerid, baseTF, low, lookahead=barmerge.lookahead_off)
+// Basic indicators with EXTENDED ATR period (KEY DIFFERENCE) - using native chart data
+atr = ta.atr(atrLength)  // 100-period ATR for stability
+trendSma = ta.sma(close, trendSmaLength)
 
-// Basic indicators with EXTENDED ATR period (KEY DIFFERENCE) - now timeframe-independent
-atr = request.security(syminfo.tickerid, baseTF, ta.atr(atrLength), lookahead=barmerge.lookahead_off)  // 100-period ATR for stability
-trendSma = request.security(syminfo.tickerid, baseTF, ta.sma(close, trendSmaLength), lookahead=barmerge.lookahead_off)
+// Reference asset data for correlation (KEY FEATURE) - using chart timeframe
+referenceClose = useReferenceAsset ? request.security(referenceSymbol, timeframe.period, close, lookahead=barmerge.lookahead_off) : na
+referenceSma = useReferenceAsset and not na(referenceClose) ? request.security(referenceSymbol, timeframe.period, ta.sma(close, trendSmaLength), lookahead=barmerge.lookahead_off) : na
 
-// Reference asset data for correlation (KEY FEATURE) - now using baseTF
-referenceClose = useReferenceAsset ? request.security(referenceSymbol, baseTF, close, lookahead=barmerge.lookahead_off) : na
-referenceSma = useReferenceAsset and not na(referenceClose) ? request.security(referenceSymbol, baseTF, ta.sma(close, trendSmaLength), lookahead=barmerge.lookahead_off) : na
-
-// Trend filter with reference asset correlation - now using baseTF data
-isTrendBullish = not trendFilterEnabled or baseTF_close > trendSma
+// Trend filter with reference asset correlation - using native chart data
+isTrendBullish = not trendFilterEnabled or close > trendSma
 isReferenceBullish = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and referenceClose > referenceSma)
 isTrendFilterPassed = isTrendBullish and isReferenceBullish
 
@@ -141,12 +135,12 @@ maxLookbackRequired = math.max(trendSmaLength, atrLength, volatilityLookback)
 historicalDataSufficient = bar_index >= maxLookbackRequired
 
 // ROBUSTNESS FIX #3: Enhanced data validation (CRITICAL per pinescriptrules.txt)
-basicDataValid = not na(baseTF_close) and not na(baseTF_high) and not na(baseTF_low) and baseTF_close > 0 and baseTF_high > 0 and baseTF_low > 0 and baseTF_high >= baseTF_low and baseTF_high >= baseTF_close and baseTF_low <= baseTF_close
+basicDataValid = not na(close) and not na(high) and not na(low) and close > 0 and high > 0 and low > 0 and high >= low and high >= close and low <= close
 atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
 trendDataValid = not na(trendSma) and trendSma > 0 and bar_index >= trendSmaLength
 referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and referenceClose > 0)
 htfDataValid = not na(htfHigh) and not na(htfLow) and htfHigh > 0 and htfLow > 0 and htfHigh > htfLow
-mathSafetyValid = atr > 0 and baseTF_close > 0 and strategy.equity > 0
+mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0
 isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and htfDataValid and historicalDataSufficient and contractDataValid and mathSafetyValid
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
@@ -158,30 +152,47 @@ var int lastHTFHighBar = na
 var int lastHTFLowBar = na
 var float lastHTFHighValue = na
 var float lastHTFLowValue = na
+var int crossAboveHTFHighBar = na
+var int touchHTFLowBar = na
 
 // Track when HTF highs/lows change
 if not na(htfHigh) and (na(lastHTFHighValue) or htfHigh != lastHTFHighValue)
     lastHTFHighBar := bar_index
     lastHTFHighValue := htfHigh
+    crossAboveHTFHighBar := na  // Reset cross tracking when HTF high changes
 
 if not na(htfLow) and (na(lastHTFLowValue) or htfLow != lastHTFLowValue)
     lastHTFLowBar := bar_index
     lastHTFLowValue := htfLow
+    touchHTFLowBar := na  // Reset touch tracking when HTF low changes
+
+// Track when we first cross above HTF high
+if not na(htfHigh) and close > htfHigh and (na(crossAboveHTFHighBar) or close[1] <= htfHigh)
+    crossAboveHTFHighBar := bar_index
+
+// Track when we first touch HTF low
+if not na(htfLow) and low <= (htfLow * (1 + dipTouchBuffer / 100)) and (na(touchHTFLowBar) or low[1] > (htfLow * (1 + dipTouchBuffer / 100)))
+    touchHTFLowBar := bar_index
 
 // Calculate age of current HTF levels
 htfHighAge = not na(lastHTFHighBar) ? bar_index - lastHTFHighBar : na
-htfLowAge = not na(lastHTFLowBar) ? bar_index - lastHTFLowBar : na// Breakout entry with universal HTF system and age validation - now using baseTF data
-basicBreakoutTrigger = enableBreakoutEntry and not na(htfHigh) and baseTF_close > htfHigh
+htfLowAge = not na(lastHTFLowBar) ? bar_index - lastHTFLowBar : na
+barsSinceCrossAbove = not na(crossAboveHTFHighBar) ? bar_index - crossAboveHTFHighBar : na
+
+// Breakout entry with universal HTF system and age validation - using native chart data
+basicBreakoutTrigger = enableBreakoutEntry and not na(htfHigh) and close > htfHigh
 ageValidBreakout = na(htfHighAge) or (htfHighAge >= breakoutMinAgeBars and htfHighAge <= breakoutMaxAgeBars)
-crossWithinTimeframe = true  // Simplification - in real implementation would check cross within X bars
+crossWithinTimeframe = na(barsSinceCrossAbove) or barsSinceCrossAbove <= breakoutCrossWithinBars
 breakoutTrigger = basicBreakoutTrigger and ageValidBreakout and crossWithinTimeframe
 
-// Dip buy entry with universal HTF system and recovery validation - now using baseTF data
-touchedHTFLow = enableDipBuyEntry and not na(htfLow) and baseTF_low <= (htfLow * (1 + dipTouchBuffer / 100))
+// Dip buy entry with universal HTF system and recovery validation - using native chart data
+touchedHTFLow = enableDipBuyEntry and not na(htfLow) and low <= (htfLow * (1 + dipTouchBuffer / 100))
 dipRecoveryLevel = not na(htfLow) ? htfLow * (1 + dipRecoveryBuffer / 100) : na
-dipRecoveryTrigger = touchedHTFLow and not na(dipRecoveryLevel) and baseTF_close > dipRecoveryLevel
+dipRecoveryTrigger = touchedHTFLow and not na(dipRecoveryLevel) and close > dipRecoveryLevel
 ageValidDipBuy = na(htfLowAge) or (htfLowAge >= dipMinAgeBars and htfLowAge <= dipMaxAgeBars)
-dipBuyTrigger = dipRecoveryTrigger and ageValidDipBuy
+barsSinceTouchLow = not na(touchHTFLowBar) ? bar_index - touchHTFLowBar : na
+recoveryWithinTimeframe = na(barsSinceTouchLow) or barsSinceTouchLow <= dipRecoveryWithinBars
+dipBuyTrigger = dipRecoveryTrigger and ageValidDipBuy and recoveryWithinTimeframe
 
 // Combined entry condition: ROBUSTNESS check AND DATA validation AND TREND filter AND REFERENCE asset AND (any entry trigger)
 entryCondition = contractDataValid and isDataValid and isTrendFilterPassed and (breakoutTrigger or dipBuyTrigger)
@@ -248,7 +259,7 @@ var float initialStopPrice = na
 // Update exit system with TOUCH HIGH activation mode (MTP KEY FEATURE) - now using baseTF data
 if strategy.position_size > 0 and not na(atr)
     entryPrice = strategy.position_avg_price
-    currentProfit = baseTF_close - entryPrice
+    currentProfit = close - entryPrice
     profitInATR = atr != 0 ? currentProfit / atr : 0.0
     
     if na(initialStopPrice) and not na(currentStopPrice)
@@ -261,18 +272,18 @@ if strategy.position_size > 0 and not na(atr)
         // MTP TOUCH HIGH MODE: Start trailing immediately on any new high above entry
         if not trailStartActivated
             if trailOnTouchHigh
-                if baseTF_high > entryPrice
+                if high > entryPrice
                     trailStartActivated := true
-                    atrTrailHigh := baseTF_high
+                    atrTrailHigh := high
             else
-                if baseTF_close >= profitActivationLevel
+                if close >= profitActivationLevel
                     trailStartActivated := true
-                    atrTrailHigh := baseTF_close
+                    atrTrailHigh := close
         
         // Update trailing stop with WIDE 22.5 ATR distance
         if trailStartActivated
-            if baseTF_high > atrTrailHigh
-                atrTrailHigh := baseTF_high
+            if high > atrTrailHigh
+                atrTrailHigh := high
             
             newTrailStop = atrTrailHigh - (atr * adjustedAtrTrailMultiplier)
             
@@ -294,7 +305,7 @@ else
     initialStopPrice := na
 
 // Exit conditions - now using baseTF data
-stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and baseTF_low <= currentStopPrice
+stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and low <= currentStopPrice
 trendFilterFail = strategy.position_size > 0 and not isTrendFilterPassed// ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                             T R A D E   E X E C U T I O N                                   |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
@@ -324,9 +335,9 @@ var float tradeExitPrice = na
 
 // Entry execution with monthly data validation - now robust across timeframes and assets
 if strategy.position_size == 0 and entryCondition and not na(atr) and atr != 0 and contractDataValid
-    initialStop = calculateInitialStopLoss(baseTF_close)
-    if not na(initialStop) and initialStop < baseTF_close
-        unitSize = calculateUnitSize(baseTF_close, initialStop)
+    initialStop = calculateInitialStopLoss(close)
+    if not na(initialStop) and initialStop < close
+        unitSize = calculateUnitSize(close, initialStop)
         if unitSize > 0
             entryType = breakoutTrigger ? "F2B" : dipBuyTrigger ? "F3D" : "F2B"
             entryId = "T1-" + entryType
@@ -345,24 +356,24 @@ if strategy.position_size > 0 and strategy.position_size[1] == 0
     tradeEntryPrice := strategy.position_avg_price// Pyramiding execution with correlation logic - now timeframe-robust
 if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr != 0
     entryPrice = strategy.position_avg_price
-    profitInN = atr != 0 ? (baseTF_close - entryPrice) / atr : 0.0
+    profitInN = atr != 0 ? (close - entryPrice) / atr : 0.0
     
     nextTierThreshold = (currentTierCount + 1) * pyramidSpacingATR
     
     atrThresholdMet = profitInN >= nextTierThreshold
-    priceDistanceOk = na(lastTierPrice) or math.abs(baseTF_close - lastTierPrice) >= (atr * pyramidSpacingATR)
+    priceDistanceOk = na(lastTierPrice) or math.abs(close - lastTierPrice) >= (atr * pyramidSpacingATR)
     pyramidCondition = atrThresholdMet and priceDistanceOk
     
     currentTradeRisk = strategy.equity > 0 ? (strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100) : 100.0
     wouldExceedMaxRisk = currentTradeRisk + unitRiskPercent > maxTradeRiskPercent
     
     if pyramidCondition and not wouldExceedMaxRisk
-        tierStopPrice = calculateInitialStopLoss(baseTF_close)
+        tierStopPrice = calculateInitialStopLoss(close)
         
         if correlateAdditionalUnits
             tierStopPrice := math.max(tierStopPrice, currentStopPrice)
         
-        tierSize = calculateUnitSize(baseTF_close, tierStopPrice)
+        tierSize = calculateUnitSize(close, tierStopPrice)
         
         if tierSize > 0
             entryType = breakoutTrigger ? "F2B" : dipBuyTrigger ? "F3D" : "F2B"
@@ -371,7 +382,7 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
             
             strategy.entry(tierId, strategy.long, qty=tierSize)
             currentTierCount := currentTierCount + 1
-            lastTierPrice := baseTF_close
+            lastTierPrice := close
             
             lastEntryType := entryType
             lastEntryTier := tierNumber
@@ -458,7 +469,7 @@ if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStart
             line.set_xy2(currentStopLossLine, bar_index, currentStopPrice)
             line.set_y1(currentStopLossLine, currentStopPrice)// Handle trade EXIT - finalize zones and preserve them historically
 if strategy.position_size == 0 and strategy.position_size[1] > 0
-    tradeExitPrice := baseTF_close
+    tradeExitPrice := close
     
     if showHistoricalZones
         if not na(currentProfitZone) and showProfitZone
@@ -517,15 +528,15 @@ bgcolor(showStopLevels and positionZone ? SUBTLE_GREEN : na, title="Position Sta
 if showDebugInfo
     // HTF Guardrails and Validation
     htfHistorySufficient = bar_index >= 300  // Minimum bars for reliable age validation
-    breakoutHTFValid = timeframe.in_seconds(breakoutHTF) >= timeframe.in_seconds(baseTF)
-    dipHTFValid = timeframe.in_seconds(dipBuyHTF) >= timeframe.in_seconds(baseTF)
+    breakoutHTFValid = timeframe.in_seconds(breakoutHTF) >= timeframe.in_seconds(timeframe.period)
+    dipHTFValid = timeframe.in_seconds(dipBuyHTF) >= timeframe.in_seconds(timeframe.period)
     htfWarning = not htfHistorySufficient or not breakoutHTFValid or not dipHTFValid
     
     debugTable = table.new(position.top_right, 2, 20, bgcolor=color.new(color.white, 80), border_width=1)
     table.cell(debugTable, 0, 0, "🛡️ UNIVERSAL MTP v4", bgcolor=htfWarning ? color.new(color.red, 70) : color.new(color.blue, 70), text_color=color.white, text_size=size.small)
     table.cell(debugTable, 1, 0, "Values", bgcolor=htfWarning ? color.new(color.red, 70) : color.new(color.blue, 70), text_color=color.white, text_size=size.small)
-    table.cell(debugTable, 0, 1, "⚡ Base TF", text_size=size.small)
-    table.cell(debugTable, 1, 1, baseTF, text_size=size.small)
+    table.cell(debugTable, 0, 1, "⚡ Chart TF", text_size=size.small)
+    table.cell(debugTable, 1, 1, timeframe.period, text_size=size.small)
     table.cell(debugTable, 0, 2, "⚡ Breakout HTF", text_size=size.small)
     table.cell(debugTable, 1, 2, breakoutHTF + (breakoutHTFValid ? " ✅" : " ⚠️"), text_size=size.small)
     table.cell(debugTable, 0, 3, "⚡ Dip HTF", text_size=size.small)

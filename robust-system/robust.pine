@@ -42,8 +42,7 @@ strategy("JON - Robust Multi-Asset Trend Following",
 // |                                  I N P U T   P A R A M E T E R S                           |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// --- R-0: ROBUSTNESS SETTINGS (CRITICAL FOR MULTI-ASSET/TIMEFRAME) ---
-baseTF = input.timeframe("1D", "Base Timeframe", group = "Robustness (R-0)", tooltip = "All strategy logic runs on this timeframe regardless of chart TF")
+// --- R-0: ROBUSTNESS SETTINGS ---
 enableFuturesMode = input.bool(true, "Enable Futures Position Sizing", group = "Robustness (R-0)", tooltip = "Use contract point value for proper futures risk calculation")
 
 // --- F-1: TREND FILTER SETTINGS ---
@@ -107,21 +106,16 @@ showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings")
 // |                                  C O R E   I N D I C A T O R S                             |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// ROBUSTNESS FIX #1: Time-frame abstraction - all logic runs on baseTF regardless of chart
-baseTF_close = request.security(syminfo.tickerid, baseTF, close, lookahead=barmerge.lookahead_off)
-baseTF_high = request.security(syminfo.tickerid, baseTF, high, lookahead=barmerge.lookahead_off)
-baseTF_low = request.security(syminfo.tickerid, baseTF, low, lookahead=barmerge.lookahead_off)
-
-// Basic indicators (now timeframe-independent)
-atr = request.security(syminfo.tickerid, baseTF, ta.atr(atrLength), lookahead=barmerge.lookahead_off)
-trendSma = request.security(syminfo.tickerid, baseTF, ta.sma(close, trendSmaLength), lookahead=barmerge.lookahead_off)
+// Basic indicators using native chart data - simple and effective
+atr = ta.atr(atrLength)
+trendSma = ta.sma(close, trendSmaLength)
 
 // Trend filter with cushion - price must be X% above SMA to be considered bullish
-isTrendBullish = not trendFilterEnabled or baseTF_close > trendSma * (1 + trendCushionPct / 100)
+isTrendBullish = not trendFilterEnabled or close > trendSma * (1 + trendCushionPct / 100)
 
-// Rolling Donchian channels (Jerry Parker style) - now timeframe-independent
-donchianHigh = request.security(syminfo.tickerid, baseTF, ta.highest(high, donchianPeriod), lookahead=barmerge.lookahead_off)
-donchianLow = request.security(syminfo.tickerid, baseTF, ta.lowest(low, donchianPeriod), lookahead=barmerge.lookahead_off)
+// Rolling Donchian channels (Jerry Parker style) using native chart data
+donchianHigh = ta.highest(high, donchianPeriod)
+donchianLow = ta.lowest(low, donchianPeriod)
 
 // ROBUSTNESS FIX #2: Futures contract validation
 contractPointValue = enableFuturesMode ? syminfo.pointvalue : 1.0
@@ -136,38 +130,52 @@ historicalDataSufficient = bar_index >= maxLookbackRequired
 // |                                E N T R Y   T R I G G E R S                                 |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// Age validation calculations (MTP-inspired) - now using baseTF data
-highAge = request.security(syminfo.tickerid, baseTF, ta.barssince(high == ta.highest(high, donchianPeriod)), lookahead=barmerge.lookahead_off)
-lowAge = request.security(syminfo.tickerid, baseTF, ta.barssince(low == ta.lowest(low, donchianPeriod)), lookahead=barmerge.lookahead_off)
+// Age validation for Donchian highs/lows (MTP-inspired proper implementation)
+var int lastDonchianHighBar = na
+var int lastDonchianLowBar = na
+var float lastDonchianHighValue = na
+var float lastDonchianLowValue = na
+var int crossAboveDonchianBar = na
+var int touchDonchianLowBar = na
 
-// Secondary Entry Triggers with age validation (either can fire) - using baseTF data
-basicBreakoutTrigger = enableBreakoutEntry and baseTF_close > (donchianHigh[1] + atr * breakoutBufferATR)
-ageValidBreakout = not enableAgeValidation or (highAge >= breakoutMinAge and highAge <= breakoutMaxAge)
-breakoutTrigger = basicBreakoutTrigger and ageValidBreakout
+// Track when Donchian highs/lows change
+if not na(donchianHigh) and (na(lastDonchianHighValue) or donchianHigh != lastDonchianHighValue)
+    lastDonchianHighBar := bar_index
+    lastDonchianHighValue := donchianHigh
+    crossAboveDonchianBar := na  // Reset cross tracking when Donchian high changes
 
-basicDipRecoveryTrigger = enableDipBuyEntry and baseTF_close > (donchianLow[1] + atr * dipRecoveryBufferATR)
-ageValidDipBuy = not enableAgeValidation or (lowAge >= dipBuyMinAge and lowAge <= dipBuyMaxAge)
-dipRecoveryTrigger = basicDipRecoveryTrigger and ageValidDipBuy
+if not na(donchianLow) and (na(lastDonchianLowValue) or donchianLow != lastDonchianLowValue)
+    lastDonchianLowBar := bar_index
+    lastDonchianLowValue := donchianLow
+    touchDonchianLowBar := na  // Reset touch tracking when Donchian low changes
+
+// Track when we first cross above Donchian high
+if not na(donchianHigh) and close > (donchianHigh[1] + atr * breakoutBufferATR) and (na(crossAboveDonchianBar) or close[1] <= (donchianHigh[1] + atr * breakoutBufferATR))
+    crossAboveDonchianBar := bar_index
+
+// Track when we first touch/recover from Donchian low
+if not na(donchianLow) and close > (donchianLow[1] + atr * dipRecoveryBufferATR) and (na(touchDonchianLowBar) or close[1] <= (donchianLow[1] + atr * dipRecoveryBufferATR))
+    touchDonchianLowBar := bar_index
+
+// Calculate actual age of current Donchian levels
+donchianHighAge = not na(lastDonchianHighBar) ? bar_index - lastDonchianHighBar : na
+donchianLowAge = not na(lastDonchianLowBar) ? bar_index - lastDonchianLowBar : na
+barsSinceCrossAbove = not na(crossAboveDonchianBar) ? bar_index - crossAboveDonchianBar : na
+barsSinceTouchLow = not na(touchDonchianLowBar) ? bar_index - touchDonchianLowBar : na
+
+// Secondary Entry Triggers with proper age and timing validation
+basicBreakoutTrigger = enableBreakoutEntry and close > (donchianHigh[1] + atr * breakoutBufferATR)
+ageValidBreakout = not enableAgeValidation or (not na(donchianHighAge) and donchianHighAge >= breakoutMinAge and donchianHighAge <= breakoutMaxAge)
+timingValidBreakout = na(barsSinceCrossAbove) or barsSinceCrossAbove <= 5  // Fresh breakout within 5 bars
+breakoutTrigger = basicBreakoutTrigger and ageValidBreakout and timingValidBreakout
+
+basicDipRecoveryTrigger = enableDipBuyEntry and close > (donchianLow[1] + atr * dipRecoveryBufferATR)
+ageValidDipBuy = not enableAgeValidation or (not na(donchianLowAge) and donchianLowAge >= dipBuyMinAge and donchianLowAge <= dipBuyMaxAge)
+timingValidDipBuy = na(barsSinceTouchLow) or barsSinceTouchLow <= 10  // Fresh recovery within 10 bars
+dipRecoveryTrigger = basicDipRecoveryTrigger and ageValidDipBuy and timingValidDipBuy
 
 // Combined entry condition: ROBUSTNESS check AND PRIMARY filter AND (any SECONDARY trigger)
 entryCondition = contractDataValid and historicalDataSufficient and isTrendBullish and (breakoutTrigger or dipRecoveryTrigger)
-
-// Entry execution with data validation - now robust across timeframes and assets
-if strategy.position_size == 0 and entryCondition and not na(atr) and atr != 0 and historicalDataSufficient
-    initialStop = calculateInitialStopLoss(baseTF_close)
-    if not na(initialStop) and initialStop < baseTF_close
-        unitSize = calculateUnitSize(baseTF_close, initialStop)
-        if unitSize > 0
-            entryType = breakoutTrigger ? "F2B" : dipRecoveryTrigger ? "F3D" : "F2B"
-            entryId = "T1-" + entryType
-            
-            strategy.entry(entryId, strategy.long, qty=unitSize)
-            currentStopPrice := initialStop
-            currentTierCount := 0
-            lastTierPrice := na
-            
-            lastEntryType := entryType
-            lastEntryTier := 1
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                    R I S K   M A N A G E M E N T                             |
@@ -236,7 +244,7 @@ var float initialStopPrice = na
 // Update exit system (PRESERVED ORIGINAL LOGIC)
 if strategy.position_size > 0 and not na(atr)
     entryPrice = strategy.position_avg_price
-    currentProfit = baseTF_close - entryPrice
+    currentProfit = close - entryPrice
     profitInATR = atr != 0 ? currentProfit / atr : 0.0
     
     // Initialize initial stop price tracking
@@ -252,20 +260,20 @@ if strategy.position_size > 0 and not na(atr)
         if not trailStartActivated
             if trailActivationMode == "Touch High"
                 // MTP-style: Start trailing immediately on any new high
-                if baseTF_high > entryPrice
+                if high > entryPrice
                     trailStartActivated := true
-                    atrTrailHigh := baseTF_high
+                    atrTrailHigh := high
             else // "Profit Level"
                 // Traditional: Start trailing when profit threshold is reached
-                if baseTF_close >= profitActivationLevel
+                if close >= profitActivationLevel
                     trailStartActivated := true
-                    atrTrailHigh := baseTF_close
+                    atrTrailHigh := close
         
         // Update trailing stop if activated
         if trailStartActivated
             // Update trail high on new highs
-            if baseTF_high > atrTrailHigh
-                atrTrailHigh := baseTF_high
+            if high > atrTrailHigh
+                atrTrailHigh := high
             
             // Calculate new trailing stop using dynamic adjustment
             newTrailStop = atrTrailHigh - (atr * adjustedAtrTrailMultiplier)
@@ -290,8 +298,8 @@ else
     profitActivationLevel := na
     initialStopPrice := na
 
-// Exit conditions - using baseTF data
-stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and baseTF_low <= currentStopPrice
+// Exit conditions - using native chart data
+stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and low <= currentStopPrice
 trendFilterFail = strategy.position_size > 0 and not isTrendBullish
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
@@ -321,6 +329,23 @@ var int tradeStartBar = na
 var float tradeEntryPrice = na
 var float tradeExitPrice = na
 
+// Entry execution with data validation - robust across timeframes and assets
+if strategy.position_size == 0 and entryCondition and not na(atr) and atr != 0 and historicalDataSufficient
+    initialStop = calculateInitialStopLoss(close)
+    if not na(initialStop) and initialStop < close
+        unitSize = calculateUnitSize(close, initialStop)
+        if unitSize > 0
+            entryType = breakoutTrigger ? "F2B" : dipRecoveryTrigger ? "F3D" : "F2B"
+            entryId = "T1-" + entryType
+            
+            strategy.entry(entryId, strategy.long, qty=unitSize)
+            currentStopPrice := initialStop
+            currentTierCount := 0
+            lastTierPrice := na
+            
+            lastEntryType := entryType
+            lastEntryTier := 1
+
 // Initialize trade tracking for zones AFTER position is confirmed
 if strategy.position_size > 0 and strategy.position_size[1] == 0
     // Trade just started - initialize zone tracking
@@ -331,14 +356,14 @@ if strategy.position_size > 0 and strategy.position_size[1] == 0
 if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr != 0
     // Calculate profit in ATR terms
     entryPrice = strategy.position_avg_price
-    profitInN = atr != 0 ? (baseTF_close - entryPrice) / atr : 0.0
+    profitInN = atr != 0 ? (close - entryPrice) / atr : 0.0
     
     // ATR threshold for next tier
     nextTierThreshold = (currentTierCount + 1) * pyramidSpacingATR
     
     // Check conditions for adding tiers
     atrThresholdMet = profitInN >= nextTierThreshold
-    priceDistanceOk = na(lastTierPrice) or math.abs(baseTF_close - lastTierPrice) >= (atr * pyramidSpacingATR)
+    priceDistanceOk = na(lastTierPrice) or math.abs(close - lastTierPrice) >= (atr * pyramidSpacingATR)
     pyramidCondition = atrThresholdMet and priceDistanceOk
     
     // Risk check: ensure we don't exceed max trade risk
@@ -347,13 +372,13 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
     
     if pyramidCondition and not wouldExceedMaxRisk
         // Calculate stop for additional tier
-        tierStopPrice = calculateInitialStopLoss(baseTF_close)
+        tierStopPrice = calculateInitialStopLoss(close)
         
         // Apply correlation logic for additional tiers
         if correlateAdditionalUnits
             tierStopPrice := math.max(tierStopPrice, currentStopPrice)
         
-        tierSize = calculateUnitSize(baseTF_close, tierStopPrice)
+        tierSize = calculateUnitSize(close, tierStopPrice)
         
         if tierSize > 0
             // Determine entry type for additional tier
@@ -363,7 +388,7 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
             
             strategy.entry(tierId, strategy.long, qty=tierSize)
             currentTierCount := currentTierCount + 1
-            lastTierPrice := baseTF_close
+            lastTierPrice := close
             
             // Track entry for UI labels
             lastEntryType := entryType
@@ -477,7 +502,7 @@ if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStart
 // Handle trade EXIT - finalize zones and preserve them historically (per UI.mdc requirements)
 if strategy.position_size == 0 and strategy.position_size[1] > 0
     // Trade just closed - finalize the zones with proper historical representation
-    tradeExitPrice := baseTF_close
+    tradeExitPrice := close
     
     // Finalize zones to represent actual trade performance per UI.mdc
     if showHistoricalZones
@@ -554,8 +579,8 @@ if showDebugInfo
     debugTable = table.new(position.top_right, 2, 15, bgcolor=color.new(color.white, 80), border_width=1)
     table.cell(debugTable, 0, 0, "🛡️ ROBUST JON", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
     table.cell(debugTable, 1, 0, "Values", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
-    table.cell(debugTable, 0, 1, "⚡ Base TF", text_size=size.small)
-    table.cell(debugTable, 1, 1, baseTF, text_size=size.small)
+    table.cell(debugTable, 0, 1, "⚡ Chart TF", text_size=size.small)
+    table.cell(debugTable, 1, 1, timeframe.period, text_size=size.small)
     table.cell(debugTable, 0, 2, "⚡ Futures Mode", text_size=size.small)
     table.cell(debugTable, 1, 2, enableFuturesMode ? "ON" : "OFF", text_size=size.small)
     table.cell(debugTable, 0, 3, "⚡ Contract Valid", text_size=size.small)
@@ -573,9 +598,9 @@ if showDebugInfo
     table.cell(debugTable, 0, 9, "🔍 Data Sufficient", text_size=size.small)
     table.cell(debugTable, 1, 9, historicalDataSufficient ? "YES" : "NO", text_size=size.small)
     table.cell(debugTable, 0, 10, "🔍 High Age", text_size=size.small)
-    table.cell(debugTable, 1, 10, not na(highAge) ? str.tostring(highAge) + " bars" : "N/A", text_size=size.small)
+    table.cell(debugTable, 1, 10, not na(donchianHighAge) ? str.tostring(donchianHighAge) + " bars" : "N/A", text_size=size.small)
     table.cell(debugTable, 0, 11, "🔍 Low Age", text_size=size.small)
-    table.cell(debugTable, 1, 11, not na(lowAge) ? str.tostring(lowAge) + " bars" : "N/A", text_size=size.small)
+    table.cell(debugTable, 1, 11, not na(donchianLowAge) ? str.tostring(donchianLowAge) + " bars" : "N/A", text_size=size.small)
     table.cell(debugTable, 0, 12, "🔍 Trail Mode", text_size=size.small)
     table.cell(debugTable, 1, 12, trailActivationMode, text_size=size.small)
     table.cell(debugTable, 0, 13, "Profit Zone", text_size=size.small)
