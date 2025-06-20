@@ -487,18 +487,25 @@ entryLabel = showTierLabels and not na(lastEntryType) and not na(lastEntryTier) 
 
 exitLabel = showTierLabels and not na(lastExitType) and not na(lastExitTier) ? "T" + str.tostring(lastExitTier) + "-" + lastExitType : ""
 
-// Conditional arrow plotting with different sizes and tier labels (Pine Script v6 compatible approach)
+// Conditional arrow plotting with different sizes (Pine Script v6 compatible approach)
 // Small arrows
-plotshape(showEntryArrows and entryDetected and arrowSize == "Small", "Entry Small", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.small, text=entryLabel, textcolor=BRIGHT_BLUE)
-plotshape(showExitArrows and exitDetected and arrowSize == "Small", "Exit Small", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.small, text=exitLabel, textcolor=BRIGHT_ORANGE)
+plotshape(showEntryArrows and entryDetected and arrowSize == "Small", "Entry Small", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.small)
+plotshape(showExitArrows and exitDetected and arrowSize == "Small", "Exit Small", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.small)
 
 // Normal arrows  
-plotshape(showEntryArrows and entryDetected and arrowSize == "Normal", "Entry Normal", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.normal, text=entryLabel, textcolor=BRIGHT_BLUE)
-plotshape(showExitArrows and exitDetected and arrowSize == "Normal", "Exit Normal", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.normal, text=exitLabel, textcolor=BRIGHT_ORANGE)
+plotshape(showEntryArrows and entryDetected and arrowSize == "Normal", "Entry Normal", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.normal)
+plotshape(showExitArrows and exitDetected and arrowSize == "Normal", "Exit Normal", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.normal)
 
 // Large arrows
-plotshape(showEntryArrows and entryDetected and arrowSize == "Large", "Entry Large", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.large, text=entryLabel, textcolor=BRIGHT_BLUE)
-plotshape(showExitArrows and exitDetected and arrowSize == "Large", "Exit Large", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.large, text=exitLabel, textcolor=BRIGHT_ORANGE)
+plotshape(showEntryArrows and entryDetected and arrowSize == "Large", "Entry Large", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.large)
+plotshape(showExitArrows and exitDetected and arrowSize == "Large", "Exit Large", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.large)
+
+// Tier labels using label.new (Pine Script v6 compatible for dynamic text)
+if showTierLabels and entryDetected and entryLabel != ""
+    label.new(bar_index, low, entryLabel, color=BRIGHT_BLUE, textcolor=color.white, style=label.style_label_up, size=size.small)
+
+if showTierLabels and exitDetected and exitLabel != ""
+    label.new(bar_index, high, exitLabel, color=BRIGHT_ORANGE, textcolor=color.white, style=label.style_label_down, size=size.small)
 
 // Background colors for trade zones (per pinescriptrules.txt standards)
 positionZone = strategy.position_size > 0
