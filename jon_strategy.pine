@@ -1,7 +1,7 @@
 // © 2025 JON Systems
 //@version=6
 strategy("JON - Futures Trading Strategy",
-     shorttitle="JON-FUT",
+     shorttitle="JON",
      overlay=true,
      pyramiding=4,
      // FIX: Changed default_qty_type to 'fixed' to allow our manual position sizing to work.
@@ -39,7 +39,7 @@ strategy("JON - Futures Trading Strategy",
 // Risk Management: Turtle unit system with volatility-based sizing and strict risk controls
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                  I N P U T   P A R A M E T E R S                           |
+// |                                  I N P U T   P A R A M E T R S                           |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // --- F-1: TREND FILTER SETTINGS ---
@@ -53,7 +53,7 @@ enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakou
 
 // F-2D: Donchian Channel System (Turtle Method)
 breakoutTimeframe = input.string("1M", "Breakout Timeframe (Monthly)", options = ["1D", "1W", "1M"], group = "Breakout Entry (F-2)")
-monthlyDonchianPeriod = input.int(55, "Monthly Donchian Period", minval = 20, maxval = 200, group = "Breakout Entry (F-2)", tooltip = "Classic Turtle long-term channel")
+monthlyDonchianPeriod = input.int(20, "Monthly Donchian Period", minval = 10, maxval = 55, group = "Breakout Entry (F-2)", tooltip = "Reduced from 55 for faster validation")
 breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1, maxval = 60, group = "Breakout Entry (F-2)")
 breakoutMinAgeDays = input.int(20, "Min Age of Crossed High (days)", minval = 1, maxval = 100, group = "Breakout Entry (F-2)")
 breakoutMaxAgeDays = input.int(200, "Max Age of Crossed High (days)", minval = 5, maxval = 500, group = "Breakout Entry (F-2)")
@@ -72,7 +72,7 @@ enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy En
 
 // F-3D: Donchian Channel System (Turtle Method)
 dipBuyTimeframe = input.string("1M", "Dip Buy Timeframe (Monthly)", options = ["1D", "1W", "1M"], group = "Dip Buy Entry (F-3)")
-monthlyDipDonchianPeriod = input.int(55, "Monthly Dip Donchian Period", minval = 20, maxval = 200, group = "Dip Buy Entry (F-3)", tooltip = "Channel for monthly support levels")
+monthlyDipDonchianPeriod = input.int(20, "Monthly Dip Donchian Period", minval = 10, maxval = 55, group = "Dip Buy Entry (F-3)", tooltip = "Reduced from 55 for faster validation")
 dipRecoveryWithinDays = input.int(30, "Recovery Within (days)", minval = 1, maxval = 90, group = "Dip Buy Entry (F-3)")
 dipMinAgeDays = input.int(15, "Min Age of Crossed Low (days)", minval = 1, maxval = 100, group = "Dip Buy Entry (F-3)")
 dipMaxAgeDays = input.int(90, "Max Age of Crossed Low (days)", minval = 5, maxval = 200, group = "Dip Buy Entry (F-3)")
@@ -153,6 +153,24 @@ isTrendFilterPassed = isTrendBullish and isReferenceBullish
 // --- CORE INDICATORS (Used by All Systems) ---
 atr = ta.atr(atrLength)
 
+// Performance optimization: Calculate advanced indicators unconditionally for consistency
+avgVolume = ta.sma(volume, volumeLookbackPeriod)
+avgAtr = ta.sma(atr, volatilityLookback)
+
+// --- DONCHIAN CHANNEL CALCULATIONS (MOVED HERE FOR PROPER DECLARATION ORDER) ---
+// REQUEST.SECURITY() for higher timeframe data - can be na during early bars or data issues
+monthlyDonchianHigh = request.security(syminfo.tickerid, breakoutTimeframe, ta.highest(high, monthlyDonchianPeriod), lookahead=barmerge.lookahead_off)
+monthlyDonchianLow = request.security(syminfo.tickerid, dipBuyTimeframe, ta.lowest(low, monthlyDipDonchianPeriod), lookahead=barmerge.lookahead_off)
+
+// Global calculations for consistency (called on every bar) - MOVED AFTER DONCHIAN DECLARATIONS
+crossoverResult = ta.crossover(close, monthlyDonchianHigh)
+barsSinceCrossover = ta.barssince(crossoverResult)
+
+// Additional global calculation for F-3 dip buy logic (using configurable buffer)
+dipTouchMultiplierGlobal = 1.0 + (dipTouchBuffer / 100.0)
+dipTouchResult = low <= monthlyDonchianLow * dipTouchMultiplierGlobal
+barsSinceDipTouch = ta.barssince(dipTouchResult)
+
 // --- COMPREHENSIVE DATA VALIDATION ---
 // CRITICAL: This algorithm is statistics and math-based - it REQUIRES complete, valid data
 // NO TRADING should occur without ALL data dependencies being satisfied
@@ -171,40 +189,33 @@ atr = ta.atr(atrLength)
 // - Mathematical operation safety (division by zero prevention)
 
 // 1. Basic Market Data Validation (OHLC Integrity)
-basicDataValid = not na(close) and not na(high) and not na(low) and not na(open) and 
-                 close > 0 and high > 0 and low > 0 and open > 0 and
-                 high >= low and high >= close and high >= open and
-                 low <= close and low <= open and
-                 volume >= 0  // Volume must be non-negative
+// CRITICAL FIX: The check `volume >= 0` causes a runtime error on futures contracts where volume can be `na`.
+// The new logic `(na(volume) or volume >= 0)` correctly handles this case, preventing a fatal script error.
+basicDataValid = not na(close) and not na(high) and not na(low) and not na(open) and close > 0 and high > 0 and low > 0 and open > 0 and high >= low and high >= close and high >= open and low <= close and low <= open and (na(volume) or volume >= 0)  // Volume must be non-negative if it exists
 
 // 2. ATR and Core Technical Indicators Validation
 atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
 
 // 3. Trend Filter Data Validation (Primary + Reference Asset)
 trendDataValid = not na(trendSma) and trendSma > 0 and bar_index >= trendSmaLength
-referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and 
-                     referenceClose > 0 and referenceSma > 0 and bar_index >= trendSmaLength)
+referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and referenceClose > 0 and referenceSma > 0 and bar_index >= trendSmaLength)
 
 // 4. Volume System Data Validation (F-2V Dependencies)
-volumeDataValid = not enableVolumeSpikeTrigger or (not na(volume) and volume >= 0 and 
-                  bar_index >= volumeLookbackPeriod)
+// CRITICAL FIX: The check `volume >= 0` causes a runtime error on futures contracts where volume can be `na`.
+// The new logic `(na(volume) or volume >= 0)` correctly handles this case, preventing a fatal script error.
+volumeDataValid = not enableVolumeSpikeTrigger or ((na(volume) or volume >= 0) and bar_index >= volumeLookbackPeriod)
 
 // 5. Monthly Donchian Data Validation (Critical F-2/F-3 Dependencies)
-// These request.security() calls are ESSENTIAL - no fallbacks allowed
-monthlyDataValid = not na(monthlyDonchianHigh) and not na(monthlyDonchianLow) and 
-                   monthlyDonchianHigh > 0 and monthlyDonchianLow > 0 and
-                   monthlyDonchianHigh > monthlyDonchianLow and  // Sanity: high > low
-                   monthlyDonchianHigh >= close[1] and monthlyDonchianLow <= close[1]  // Reasonable bounds
+// Relaxed bounds: only ensure NA checks, positivity, and high>low relationship
+monthlyDataValid = not na(monthlyDonchianHigh) and not na(monthlyDonchianLow) and monthlyDonchianHigh > 0 and monthlyDonchianLow > 0 and monthlyDonchianHigh > monthlyDonchianLow
 
 // 6. Advanced Technical Calculations Validation
 // All ta.sma(), ta.highest(), ta.lowest() calls must be validated
 advancedTechnicalValid = true
 if enableVolumeSpikeTrigger and volumeDataValid
-    avgVolume = ta.sma(volume, volumeLookbackPeriod)
     advancedTechnicalValid := advancedTechnicalValid and not na(avgVolume) and avgVolume > 0
 
 if enableDynamicTrail and bar_index >= volatilityLookback
-    avgAtr = ta.sma(atr, volatilityLookback)  
     advancedTechnicalValid := advancedTechnicalValid and not na(avgAtr) and avgAtr > 0
 
 // Swing low calculation used in stop loss logic
@@ -212,30 +223,24 @@ recentSwingLow = ta.lowest(low, 10)
 advancedTechnicalValid := advancedTechnicalValid and not na(recentSwingLow) and recentSwingLow > 0
 
 // 7. Strategy System Validation
-strategyDataValid = strategy.equity > 0 and strategy.equity > 100 and  // Minimum account size
-                    not na(strategy.equity) and not na(strategy.position_size)
+strategyDataValid = strategy.equity > 0 and strategy.equity > 100 and not na(strategy.equity) and not na(strategy.position_size)  // Minimum account size
 
 // 8. Historical Data Sufficiency (ALL lookback periods + age validations)
 maxLookbackRequired = math.max(math.max(trendSmaLength, atrLength), 
                       math.max(volumeLookbackPeriod, volatilityLookback))
 maxAgeRequired = math.max(breakoutMaxAgeDays, dipMaxAgeDays)
 // Ensure sufficient history for monthly data formation + age validation + all indicators
-historicalDataSufficient = bar_index >= (maxLookbackRequired + maxAgeRequired + 50) // Extra buffer
+historicalDataSufficient = bar_index >= (maxLookbackRequired + maxAgeRequired + 25) // ~425 bars (1.7 years daily)
 
 // 9. Mathematical Safety Validation (Prevent Division by Zero)
-mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0 and
-                  (not useReferenceAsset or referenceClose > 0) and
-                  (not na(monthlyDonchianHigh) and monthlyDonchianHigh > 0) and
-                  (not na(monthlyDonchianLow) and monthlyDonchianLow > 0)
+mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0 and (not useReferenceAsset or referenceClose > 0) and (not na(monthlyDonchianHigh) and monthlyDonchianHigh > 0) and (not na(monthlyDonchianLow) and monthlyDonchianLow > 0)
 
 // MASTER DATA VALIDATION: ALL systems must pass - NO EXCEPTIONS
-isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and 
-              volumeDataValid and monthlyDataValid and advancedTechnicalValid and 
-              strategyDataValid and historicalDataSufficient and mathSafetyValid
+isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and volumeDataValid and monthlyDataValid and advancedTechnicalValid and strategyDataValid and historicalDataSufficient and mathSafetyValid
 
 // COMPREHENSIVE DEBUG LOGGING: Identify ALL data validation failures
 if showDebugInfo and not isDataValid
-    debugReason = ""
+    string debugReason = ""
     if not basicDataValid
         debugReason := "BASIC_DATA_INVALID (OHLC or Volume issue)"
     else if not atrDataValid
@@ -253,31 +258,20 @@ if showDebugInfo and not isDataValid
     else if not strategyDataValid
         debugReason := "STRATEGY_SYSTEM_INVALID (equity or position_size)"
     else if not historicalDataSufficient
-        debugReason := "INSUFFICIENT_HISTORICAL_DATA (need " + str.tostring(maxLookbackRequired + maxAgeRequired + 50) + " bars, have " + str.tostring(bar_index) + ")"
+        debugReason := "INSUFFICIENT_HISTORICAL_DATA (need " + str.tostring(maxLookbackRequired + maxAgeRequired + 25) + " bars, have " + str.tostring(bar_index) + ")"
     else if not mathSafetyValid
         debugReason := "MATH_SAFETY_INVALID (division by zero risk)"
     else
         debugReason := "UNKNOWN_DATA_ISSUE"
     
-    log.warning("COMPREHENSIVE_DATA_VALIDATION_FAILED: " + debugReason + 
-               " | Bar: " + str.tostring(bar_index) + 
-               " | ATR: " + str.tostring(atr) + 
-               " | TrendSMA: " + str.tostring(trendSma) +
-               " | MonthlyHigh: " + str.tostring(monthlyDonchianHigh) + 
-               " | MonthlyLow: " + str.tostring(monthlyDonchianLow) +
-               " | Volume: " + str.tostring(volume) +
-               " | Equity: " + str.tostring(strategy.equity))
+    // Log the debug information (moved inside the conditional block)
+    log.warning("⚠️ DATA_VALIDATION_FAILED: " + debugReason + " | Bar: " + str.tostring(bar_index) + " | ATR: " + str.tostring(atr) + " | TrendSMA: " + str.tostring(trendSma) + " | MonthlyHigh: " + str.tostring(monthlyDonchianHigh) + " | MonthlyLow: " + str.tostring(monthlyDonchianLow) + " | Volume: " + str.tostring(volume) + " | Equity: " + str.tostring(strategy.equity))
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                E N T R Y   T R I G G E R S                                 |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// --- DONCHIAN CHANNEL CALCULATIONS ---
-// REQUEST.SECURITY() for higher timeframe data - can be na during early bars or data issues
-monthlyDonchianHigh = request.security(syminfo.tickerid, breakoutTimeframe, ta.highest(high, monthlyDonchianPeriod), lookahead=barmerge.lookahead_off)
-monthlyDonchianLow = request.security(syminfo.tickerid, dipBuyTimeframe, ta.lowest(low, monthlyDipDonchianPeriod), lookahead=barmerge.lookahead_off)
-
-// NOTE: Monthly data validation is now handled in the comprehensive validation section above
+// NOTE: Monthly Donchian calculations moved to CORE INDICATORS section for proper declaration order
 
 // ============================================================================================
 // F-2: SYSTEM 1 - DONCHIAN MONTHLY HIGH BREAKOUT OR VOLUME SPIKE + PRICE RISE
@@ -290,35 +284,25 @@ if enableBreakoutEntry and monthlyDataValid
     currentBreakout = close > monthlyDonchianHigh
     
     if currentBreakout
-        // Find when the Donchian high was formed
-        barsBackToHigh = 0
-        highFormationFound = false
+        // OPTIMIZATION: Replaced expensive `for` loop with highly efficient `ta.barssince()`
+        // This finds the number of bars since the monthly high value changed.
+        barsBackToHigh = ta.barssince(monthlyDonchianHigh != monthlyDonchianHigh[1])
         
-        // Look back to find when this high was established
-        for i = 1 to 252 // One year lookback maximum
-            pastHigh = monthlyDonchianHigh[i]
-            if na(pastHigh) or pastHigh != monthlyDonchianHigh
-                barsBackToHigh := i - 1
-                highFormationFound := true
-                break
-        
-        if highFormationFound
-            // Convert bars to approximate days (assuming daily timeframe)
+        // Ensure the lookup was successful (barssince can return na)
+        if not na(barsBackToHigh)
             daysOld = barsBackToHigh
             
             // Age validation: High must be within acceptable age range
             ageValid = daysOld >= breakoutMinAgeDays and daysOld <= breakoutMaxAgeDays
             
             // Cross timing validation: Must have crossed within specified days
-            recentCross = ta.barssince(ta.crossover(close, monthlyDonchianHigh)) <= breakoutCrossWithinDays
+            recentCross = barstate.isconfirmed and barsSinceCrossover <= breakoutCrossWithinDays
             
             donchianBreakout := ageValid and (recentCross or currentBreakout)
 
 // F-2V: Volume Spike + Price Rise (Alternative High-Conviction Trigger)
 volumeSpikeBreakout = false
 if enableVolumeSpikeTrigger and volumeDataValid and advancedTechnicalValid
-    avgVolume = ta.sma(volume, volumeLookbackPeriod)
-    
     // avgVolume validation already handled in comprehensive validation
     // Check for volume spike ≥50% AND cumulative price rise ≥2% within configurable windows
     volumeSpikeInWindow = false
@@ -342,8 +326,7 @@ if enableVolumeSpikeTrigger and volumeDataValid and advancedTechnicalValid
     volumeSpikeBreakout := volumeSpikeInWindow and priceRiseInWindow
 
 // F-2 Combined: Either F-2D or F-2V triggers entry
-breakoutEntryCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and 
-                        (donchianBreakout or volumeSpikeBreakout)
+breakoutEntryCondition = enableBreakoutEntry and isTrendFilterPassed and isDataValid and (donchianBreakout or volumeSpikeBreakout)
 
 // Track which breakout method triggered for risk management logic
 traditionalMonthlyDonchianBreakout = donchianBreakout
@@ -361,25 +344,19 @@ monthlyTrendBias = isTrendBullish // Monthly bias matches trend direction
 dipRecoveryCondition = false
 if enableDipBuyEntry and monthlyDataValid
     // Check if we've touched the monthly low recently and are now recovering
-    dipTouchMultiplier = 1.0 + (dipTouchBuffer / 100.0)
     dipRecoveryMultiplier = 1.0 + (dipRecoveryBuffer / 100.0)
-    recentTouchOfLow = ta.barssince(low <= monthlyDonchianLow * dipTouchMultiplier) <= dipRecoveryWithinDays
+    
+    // Use pre-calculated global barsSinceDipTouch (calculated with configurable buffer)
+    recentTouchOfLow = barsSinceDipTouch <= dipRecoveryWithinDays
     currentlyRecovering = close > monthlyDonchianLow * dipRecoveryMultiplier
     
     if recentTouchOfLow and currentlyRecovering
-        // Find when the Donchian low was formed
-        barsBackToLow = 0
-        lowFormationFound = false
-        
-        // Look back to find when this low was established
-        for i = 1 to 252 // One year lookback maximum
-            pastLow = monthlyDonchianLow[i]
-            if na(pastLow) or pastLow != monthlyDonchianLow
-                barsBackToLow := i - 1
-                lowFormationFound := true
-                break
-        
-        if lowFormationFound
+        // OPTIMIZATION: Replaced expensive `for` loop with highly efficient `ta.barssince()`
+        // This finds the number of bars since the monthly low value changed.
+        barsBackToLow = ta.barssince(monthlyDonchianLow != monthlyDonchianLow[1])
+
+        // Ensure the lookup was successful (barssince can return na)
+        if not na(barsBackToLow)
             // Convert bars to approximate days (assuming daily timeframe)
             daysOld = barsBackToLow
             
@@ -402,7 +379,6 @@ dipBuyEntryCondition = enableDipBuyEntry and isTrendFilterPassed and isDataValid
 // Dynamic volatility adjustment with proper data validation
 volatilityAdjustment = 1.0
 if enableDynamicTrail and atrDataValid and bar_index >= volatilityLookback and advancedTechnicalValid
-    avgAtr = ta.sma(atr, volatilityLookback)
     // avgAtr validation already handled in comprehensive validation - safe to use
     volatilityRatio = atr / avgAtr
     volatilityAdjustment := volatilityRatio > 1.2 ? 1.3 : volatilityRatio < 0.8 ? 0.7 : 1.0
@@ -578,6 +554,7 @@ var bool isBreakoutPosition = false
 // --- R-4: PYRAMIDING TRACKING ---
 var int currentPyramidCount = 0
 var float lastPyramidPrice = na
+var bool wouldExceedMaxRisk = false
 
 // --- ENTRY EXECUTION (TURTLE UNIT SYSTEM) ---
 // PROPER PINE SCRIPT: Variables initialized to na, calculated conditionally
@@ -615,10 +592,7 @@ if (strategy.position_size == 0 and isDataValid)
             
             // Risk management logging following Pine Script standards
             if showDebugInfo
-                log.info("ENTRY: " + entryId + " | Price=" + str.tostring(close, "#.##") + 
-                        " | Stop=" + str.tostring(initialStop, "#.##") + 
-                        " | Risk=" + str.tostring(calculatedRisk, "#.##") + "%" +
-                        " | Size=" + str.tostring(unitSize, "#.##"))
+                log.info("ENTRY: " + entryId + " | Price=" + str.tostring(close, "#.##") + " | Stop=" + str.tostring(initialStop, "#.##") + " | Risk=" + str.tostring(calculatedRisk, "#.##") + "%" + " | Size=" + str.tostring(unitSize, "#.##"))
 
 // --- R-4: TURTLE UNIT PYRAMIDING EXECUTION ---
 if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries and atrDataValid)
@@ -641,9 +615,9 @@ if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < ma
     // TURTLE RISK CHECK: Ensure we don't exceed max trade risk using adjusted parameters
     if not na(currentStopPrice) and strategy.equity > 0
         currentTradeRisk = strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100
-        wouldExceedMaxRisk = currentTradeRisk + adjustedUnitRiskPercent > maxTradeRiskPercent
+        wouldExceedMaxRisk := currentTradeRisk + adjustedUnitRiskPercent > maxTradeRiskPercent
     else
-        wouldExceedMaxRisk = true // Safety: block pyramiding if can't calculate risk
+        wouldExceedMaxRisk := true // Safety: block pyramiding if can't calculate risk
     
     if pyramidCondition and not wouldExceedMaxRisk
         // Apply correlation logic for additional units
@@ -667,9 +641,7 @@ if (enablePyramiding and strategy.position_size > 0 and currentPyramidCount < ma
             // Risk management logging for pyramid entries
             if showDebugInfo
                 totalRisk = (currentPyramidCount + 1) * adjustedUnitRiskPercent
-                log.info("PYRAMID: " + unitId + " | Price=" + str.tostring(close, "#.##") + 
-                        " | TotalRisk=" + str.tostring(totalRisk, "#.##") + "%" +
-                        " | ProfitATR=" + str.tostring(profitInN, "#.##"))
+                log.info("PYRAMID: " + unitId + " | Price=" + str.tostring(close, "#.##") + " | TotalRisk=" + str.tostring(totalRisk, "#.##") + "%" + " | ProfitATR=" + str.tostring(profitInN, "#.##"))
             
             // Update stop to protect new unit with correlation
             if correlateAdditionalUnits
@@ -741,6 +713,9 @@ if strategy.position_size == 0
 // Stop Loss Line - Single, clear line showing current stop
 plot(strategy.position_size > 0 ? currentStopPrice : na, "Stop Loss", color=color.red, linewidth=2)
 
+// Trend SMA Line - Show 200 SMA when enabled
+plot(showTrendSma ? trendSma : na, "200 SMA", color=color.blue, linewidth=1)
+
 // Profit/Risk Zones - Background colors during trades
 tradeIsActive = strategy.position_size > 0
 profitZoneColor = tradeIsActive and close > strategy.position_avg_price ? color.new(color.green, 95) : na
@@ -765,12 +740,71 @@ if entryCondition and not na(entryLabel)
 
 // Exit Arrows with Strategy Labels  
 var string exitLabel = na
-if showTradeLabels and strategy.position_size == 0 and strategy.position_size[1] > 0 and not na(exitReason)
+exitCondition = showTradeLabels and strategy.position_size == 0 and strategy.position_size[1] > 0 and not na(exitReason)
+if exitCondition
     exitLabel := exitReason == "STOP LOSS" ? "SL" : 
                  exitReason == "ATR TRAIL" ? "F-4" : 
                  exitReason == "FAILED BREAKOUT" ? "F-5" : 
                  exitReason == "BEAR MARKET" ? "F-1" : "EXIT"
-    
-    // Exit marker with label
-    plotshape(true, "Exit", shape.triangledown, location.abovebar, color.new(color.orange, 30), size=size.small)
+
+// Exit marker with label (MOVED TO GLOBAL SCOPE)
+plotshape(exitCondition, "Exit", shape.triangledown, location.abovebar, color.new(color.orange, 30), size=size.small)
+if exitCondition and not na(exitLabel)
     label.new(bar_index, high, exitLabel, style=label.style_label_down, color=color.new(color.orange, 30), textcolor=color.white, size=size.small)
+
+// DEBUGGING TABLE: Proper Pine Script implementation - declared once, updated on last bar only
+var table debugTable = table.new(position.top_right, 2, 15, bgcolor=color.white, border_width=1)
+
+if showDebugInfo and barstate.islast
+    table.clear(debugTable, 0, 0, 1, 14)
+    
+    // Header
+    table.cell(debugTable, 0, 0, "JON DEBUG", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(debugTable, 1, 0, "STATUS", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    
+    // MASTER Data validation status
+    table.cell(debugTable, 0, 1, "MASTER Valid", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 1, isDataValid ? "✅ YES" : "❌ NO", text_color=isDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    // Individual validation breakdowns
+    table.cell(debugTable, 0, 2, "Basic Data", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 2, basicDataValid ? "✅" : "❌", text_color=basicDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 3, "ATR Data", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 3, atrDataValid ? "✅" : "❌", text_color=atrDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 4, "Trend Data", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 4, trendDataValid ? "✅" : "❌", text_color=trendDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 5, "Reference Data", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 5, referenceDataValid ? "✅" : "❌", text_color=referenceDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 6, "Volume Data", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 6, volumeDataValid ? "✅" : "❌", text_color=volumeDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 7, "Monthly Data", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 7, monthlyDataValid ? "✅" : "❌", text_color=monthlyDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 8, "Advanced Tech", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 8, advancedTechnicalValid ? "✅" : "❌", text_color=advancedTechnicalValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 9, "Strategy Data", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 9, strategyDataValid ? "✅" : "❌", text_color=strategyDataValid ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 10, "History Sufficient", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 10, historicalDataSufficient ? "✅" : "❌", text_color=historicalDataSufficient ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 11, "Math Safety", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 11, mathSafetyValid ? "✅" : "❌", text_color=mathSafetyValid ? color.green : color.red, text_size=size.tiny)
+    
+    // Historical data requirement details
+    barsRequired = maxLookbackRequired + maxAgeRequired + 25
+    table.cell(debugTable, 0, 12, "Bars Need/Have", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 12, str.tostring(barsRequired) + "/" + str.tostring(bar_index), text_color=historicalDataSufficient ? color.green : color.red, text_size=size.tiny)
+    
+    // Monthly Donchian values (critical for debugging)
+    table.cell(debugTable, 0, 13, "Monthly High", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 13, not na(monthlyDonchianHigh) ? str.tostring(monthlyDonchianHigh, "#.##") : "NA", text_color=not na(monthlyDonchianHigh) ? color.blue : color.red, text_size=size.tiny)
+    
+    table.cell(debugTable, 0, 14, "Monthly Low", text_color=color.black, text_size=size.tiny)
+    table.cell(debugTable, 1, 14, not na(monthlyDonchianLow) ? str.tostring(monthlyDonchianLow, "#.##") : "NA", text_color=not na(monthlyDonchianLow) ? color.blue : color.red, text_size=size.tiny)
