@@ -78,6 +78,10 @@ showEntryArrows = input.bool(true, "Show Entry Arrows", group = "Display Setting
 showExitArrows = input.bool(true, "Show Exit Arrows", group = "Display Settings")
 showTierLabels = input.bool(true, "Show Tier-Function Labels", group = "Display Settings")
 arrowSize = input.string("Small", "Arrow Size", options = ["Small", "Normal", "Large"], group = "Display Settings")
+showProfitZone = input.bool(true, "Show Profit Zone", group = "Display Settings")
+showRiskZone = input.bool(true, "Show Risk Zone", group = "Display Settings")
+showStopLossLine = input.bool(true, "Show Stop Loss Line", group = "Display Settings")
+zoneTransparency = input.int(85, "Zone Transparency", minval = 80, maxval = 95, group = "Display Settings")
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                  C O R E   I N D I C A T O R S                             |
@@ -233,6 +237,13 @@ var string lastExitType = na
 var int lastEntryTier = na
 var int lastExitTier = na
 
+// Zone tracking for trade duration (scalable across timeframes)
+var box profitZone = na
+var box riskZone = na
+var line stopLossLine = na
+var int tradeStartBar = na
+var float tradeEntryPrice = na
+
 // Entry execution
 if strategy.position_size == 0 and entryCondition and not na(atr) and atr > 0 and historicalDataSufficient
     initialStop = calculateInitialStopLoss(close)
@@ -250,6 +261,10 @@ if strategy.position_size == 0 and entryCondition and not na(atr) and atr > 0 an
             // Track entry for UI labels
             lastEntryType := entryType
             lastEntryTier := 1
+            
+            // Initialize trade tracking for zones
+            tradeStartBar := bar_index
+            tradeEntryPrice := close
 
 // Pyramiding execution (TIER SYSTEM LOGIC)
 if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr > 0
@@ -325,6 +340,92 @@ if strategy.position_size == 0
     lastTierPrice := na
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
+// |                        P R O F I T / R I S K   Z O N E   M A N A G E M E N T               |
+// ——————————————————————————————————————————————————————————————————————————————————————————————
+
+// Zone colors with user-configurable transparency
+PROFIT_ZONE_COLOR = color.new(color.green, zoneTransparency)
+RISK_ZONE_COLOR = color.new(color.red, zoneTransparency)
+DARK_RED_LINE = color.new(color.red, 0)
+
+// Zone management (trade duration based)
+if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStartBar)
+    // Calculate zone boundaries
+    currentPrice = close
+    upperBound = high * 1.05  // Dynamic upper bound (5% above current high)
+    lowerBound = currentStopPrice
+    
+    // Profit Zone: Current price to upper chart area
+    if showProfitZone
+        // Delete existing profit zone
+        if not na(profitZone)
+            box.delete(profitZone)
+        
+        // Create new profit zone from trade start to current bar
+        profitZone := box.new(
+            left=tradeStartBar, 
+            top=upperBound, 
+            right=bar_index, 
+            bottom=currentPrice,
+            bgcolor=PROFIT_ZONE_COLOR, 
+            border_color=color.new(color.green, 50),
+            border_width=1,
+            extend=extend.right
+        )
+    
+    // Risk Zone: Current price to stop loss
+    if showRiskZone and currentPrice > lowerBound
+        // Delete existing risk zone
+        if not na(riskZone)
+            box.delete(riskZone)
+        
+        // Create new risk zone from trade start to current bar
+        riskZone := box.new(
+            left=tradeStartBar, 
+            top=currentPrice, 
+            right=bar_index, 
+            bottom=lowerBound,
+            bgcolor=RISK_ZONE_COLOR, 
+            border_color=color.new(color.red, 50),
+            border_width=1,
+            extend=extend.right
+        )
+    
+    // Stop Loss Line: Continuous line across trade duration
+    if showStopLossLine
+        // Delete existing stop loss line
+        if not na(stopLossLine)
+            line.delete(stopLossLine)
+        
+        // Create new stop loss line
+        stopLossLine := line.new(
+            x1=tradeStartBar, 
+            y1=currentStopPrice, 
+            x2=bar_index, 
+            y2=currentStopPrice,
+            color=DARK_RED_LINE, 
+            width=2,
+            extend=extend.right,
+            style=line.style_solid
+        )
+
+else
+    // No position - clean up all zones
+    if not na(profitZone)
+        box.delete(profitZone)
+        profitZone := na
+    if not na(riskZone)
+        box.delete(riskZone)
+        riskZone := na
+    if not na(stopLossLine)
+        line.delete(stopLossLine)
+        stopLossLine := na
+    
+    // Reset zone tracking
+    tradeStartBar := na
+    tradeEntryPrice := na
+
+// ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                V I S U A L   I N T E R F A C E                             |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
@@ -332,7 +433,6 @@ if strategy.position_size == 0
 BRIGHT_BLUE = color.new(#0080FF, 0)
 BRIGHT_ORANGE = color.new(#FF8000, 0)
 PROFESSIONAL_BLUE = color.new(color.blue, 20)
-MUTED_RED = color.new(color.red, 30)
 SUBTLE_GREEN = color.new(color.green, 97)
 
 // Arrow size configuration
@@ -340,7 +440,6 @@ arrowSizeValue = arrowSize == "Small" ? size.small : arrowSize == "Normal" ? siz
 
 // Essential plots
 plot(showTrendSma ? trendSma : na, "200 SMA", color=PROFESSIONAL_BLUE, linewidth=1)
-plot(strategy.position_size > 0 and showStopLevels ? currentStopPrice : na, "Stop Loss", color=MUTED_RED, linewidth=2)
 
 // Entry detection and labeling
 entryDetected = strategy.position_size > 0 and strategy.position_size[1] == 0
