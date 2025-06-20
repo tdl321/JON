@@ -81,7 +81,9 @@ arrowSize = input.string("Small", "Arrow Size", options = ["Small", "Normal", "L
 showProfitZone = input.bool(true, "Show Profit Zone", group = "Display Settings")
 showRiskZone = input.bool(true, "Show Risk Zone", group = "Display Settings")
 showStopLossLine = input.bool(true, "Show Stop Loss Line", group = "Display Settings")
+showHistoricalZones = input.bool(true, "Show Historical Zones", group = "Display Settings")
 zoneTransparency = input.int(85, "Zone Transparency", minval = 80, maxval = 95, group = "Display Settings")
+maxHistoricalZones = input.int(50, "Max Historical Zones", minval = 10, maxval = 100, group = "Display Settings")
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                  C O R E   I N D I C A T O R S                             |
@@ -237,12 +239,18 @@ var string lastExitType = na
 var int lastEntryTier = na
 var int lastExitTier = na
 
-// Zone tracking for trade duration (scalable across timeframes)
-var box profitZone = na
-var box riskZone = na
-var line stopLossLine = na
+// Historical zone tracking (stores ALL past trades + current active trade)
+var array<box> historicalProfitZones = array.new<box>()
+var array<box> historicalRiskZones = array.new<box>()
+var array<line> historicalStopLossLines = array.new<line>()
+
+// Current active trade zone tracking
+var box currentProfitZone = na
+var box currentRiskZone = na
+var line currentStopLossLine = na
 var int tradeStartBar = na
 var float tradeEntryPrice = na
+var float tradeExitPrice = na
 
 // Entry execution
 if strategy.position_size == 0 and entryCondition and not na(atr) and atr > 0 and historicalDataSufficient
@@ -338,9 +346,15 @@ else if trendFilterFail
 if strategy.position_size == 0
     currentTierCount := 0
     lastTierPrice := na
+    // Reset UI label tracking after trade closes and labels have been shown
+    if strategy.position_size[1] > 0
+        lastEntryType := na
+        lastEntryTier := na
+        lastExitType := na
+        lastExitTier := na
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                        P R O F I T / R I S K   Z O N E   M A N A G E M E N T               |
+// |                H I S T O R I C A L   Z O N E   M A N A G E M E N T                          |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // Zone colors with user-configurable transparency
@@ -348,80 +362,104 @@ PROFIT_ZONE_COLOR = color.new(color.green, zoneTransparency)
 RISK_ZONE_COLOR = color.new(color.red, zoneTransparency)
 DARK_RED_LINE = color.new(color.red, 0)
 
-// Zone management (trade duration based)
-if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStartBar)
-    // Calculate zone boundaries
+// Historical zone constants (user-configurable)
+MAX_ZONES = maxHistoricalZones  // Maximum historical zones to keep (memory management)
+
+// Zone array memory management (moved to main scope per Pine Script v6 requirements)
+// Clean up oldest zones if approaching limits
+if array.size(historicalProfitZones) > MAX_ZONES
+    oldBox = array.shift(historicalProfitZones)
+    if not na(oldBox)
+        box.delete(oldBox)
+
+if array.size(historicalRiskZones) > MAX_ZONES
+    oldBox = array.shift(historicalRiskZones)
+    if not na(oldBox)
+        box.delete(oldBox)
+
+if array.size(historicalStopLossLines) > MAX_ZONES
+    oldLine = array.shift(historicalStopLossLines)
+    if not na(oldLine)
+        line.delete(oldLine)
+
+// Zone management for ACTIVE trades (with validation per pinescriptrules.txt)
+if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStartBar) and currentStopPrice > 0
+    // Calculate zone boundaries (with safety validation)
     currentPrice = close
-    upperBound = high * 1.05  // Dynamic upper bound (5% above current high)
+    upperBound = high > 0 ? high * 1.05 : close * 1.05  // Dynamic upper bound with validation
     lowerBound = currentStopPrice
     
-    // Profit Zone: Current price to upper chart area
-    if showProfitZone
-        // Delete existing profit zone
-        if not na(profitZone)
-            box.delete(profitZone)
+    // Current Profit Zone: Current price to upper chart area (with validation)
+    if showProfitZone and upperBound > currentPrice and tradeStartBar <= bar_index
+        // Delete existing current profit zone
+        if not na(currentProfitZone)
+            box.delete(currentProfitZone)
         
-        // Create new profit zone from trade start to current bar
-        profitZone := box.new(
-            left=tradeStartBar, 
-            top=upperBound, 
-            right=bar_index, 
-            bottom=currentPrice,
-            bgcolor=PROFIT_ZONE_COLOR, 
-            border_color=color.new(color.green, 50),
-            border_width=1,
-            extend=extend.right
-        )
+        // Create new profit zone with validation (per pinescriptrules.txt error prevention)
+        currentProfitZone := box.new(left=tradeStartBar, top=upperBound, right=bar_index, bottom=currentPrice, bgcolor=PROFIT_ZONE_COLOR, border_color=color.new(color.green, 50), border_width=1, extend=extend.right)
     
-    // Risk Zone: Current price to stop loss
-    if showRiskZone and currentPrice > lowerBound
-        // Delete existing risk zone
-        if not na(riskZone)
-            box.delete(riskZone)
+    // Current Risk Zone: Current price to stop loss (with validation)
+    if showRiskZone and currentPrice > lowerBound and lowerBound > 0 and tradeStartBar <= bar_index
+        // Delete existing current risk zone
+        if not na(currentRiskZone)
+            box.delete(currentRiskZone)
         
-        // Create new risk zone from trade start to current bar
-        riskZone := box.new(
-            left=tradeStartBar, 
-            top=currentPrice, 
-            right=bar_index, 
-            bottom=lowerBound,
-            bgcolor=RISK_ZONE_COLOR, 
-            border_color=color.new(color.red, 50),
-            border_width=1,
-            extend=extend.right
-        )
+        // Create new risk zone with validation (per pinescriptrules.txt error prevention)
+        currentRiskZone := box.new(left=tradeStartBar, top=currentPrice, right=bar_index, bottom=lowerBound, bgcolor=RISK_ZONE_COLOR, border_color=color.new(color.red, 50), border_width=1, extend=extend.right)
     
-    // Stop Loss Line: Continuous line across trade duration
-    if showStopLossLine
-        // Delete existing stop loss line
-        if not na(stopLossLine)
-            line.delete(stopLossLine)
+    // Current Stop Loss Line: Continuous line across trade duration (with validation)
+    if showStopLossLine and currentStopPrice > 0 and tradeStartBar <= bar_index
+        // Delete existing current stop loss line
+        if not na(currentStopLossLine)
+            line.delete(currentStopLossLine)
         
-        // Create new stop loss line
-        stopLossLine := line.new(
-            x1=tradeStartBar, 
-            y1=currentStopPrice, 
-            x2=bar_index, 
-            y2=currentStopPrice,
-            color=DARK_RED_LINE, 
-            width=2,
-            extend=extend.right,
-            style=line.style_solid
-        )
+        // Create new stop loss line with validation (per pinescriptrules.txt error prevention)
+        currentStopLossLine := line.new(x1=tradeStartBar, y1=currentStopPrice, x2=bar_index, y2=currentStopPrice, color=DARK_RED_LINE, width=2, extend=extend.right, style=line.style_solid)
 
-else
-    // No position - clean up all zones
-    if not na(profitZone)
-        box.delete(profitZone)
-        profitZone := na
-    if not na(riskZone)
-        box.delete(riskZone)
-        riskZone := na
-    if not na(stopLossLine)
-        line.delete(stopLossLine)
-        stopLossLine := na
+// Handle trade EXIT - finalize zones and preserve them historically (moved to main scope per Pine Script v6)
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    // Trade just closed - finalize the zones
+    tradeExitPrice := close
     
-    // Reset zone tracking
+    // Finalize zones inline (no functions modifying global variables)
+    if showHistoricalZones
+        // Preserve zones historically
+        if not na(currentProfitZone) and showProfitZone
+            // Update current profit zone with final boundaries
+            box.set_right(currentProfitZone, bar_index)
+            box.set_bottom(currentProfitZone, tradeExitPrice)
+            // Move to historical array
+            array.push(historicalProfitZones, currentProfitZone)
+            currentProfitZone := na
+        
+        if not na(currentRiskZone) and showRiskZone
+            // Update current risk zone with final boundaries
+            box.set_right(currentRiskZone, bar_index)
+            box.set_top(currentRiskZone, tradeExitPrice)
+            // Move to historical array
+            array.push(historicalRiskZones, currentRiskZone)
+            currentRiskZone := na
+        
+        if not na(currentStopLossLine) and showStopLossLine
+            // Update current stop loss line with final endpoint
+            line.set_x2(currentStopLossLine, bar_index)
+            // Move to historical array
+            array.push(historicalStopLossLines, currentStopLossLine)
+            currentStopLossLine := na
+    
+    if not showHistoricalZones
+        // Delete current zones if not preserving historically
+        if not na(currentProfitZone)
+            box.delete(currentProfitZone)
+            currentProfitZone := na
+        if not na(currentRiskZone)
+            box.delete(currentRiskZone)
+            currentRiskZone := na
+        if not na(currentStopLossLine)
+            line.delete(currentStopLossLine)
+            currentStopLossLine := na
+    
+    // Reset current trade tracking
     tradeStartBar := na
     tradeEntryPrice := na
 
@@ -435,46 +473,31 @@ BRIGHT_ORANGE = color.new(#FF8000, 0)
 PROFESSIONAL_BLUE = color.new(color.blue, 20)
 SUBTLE_GREEN = color.new(color.green, 97)
 
-// Arrow size configuration
-arrowSizeValue = arrowSize == "Small" ? size.small : arrowSize == "Normal" ? size.normal : size.large
-
 // Essential plots
 plot(showTrendSma ? trendSma : na, "200 SMA", color=PROFESSIONAL_BLUE, linewidth=1)
 
-// Entry detection and labeling
+// Entry/Exit detection patterns (per pinescriptrules.txt standards)
 entryDetected = strategy.position_size > 0 and strategy.position_size[1] == 0
 exitDetected = strategy.position_size == 0 and strategy.position_size[1] > 0
 
-// Generate entry labels
-entryLabel = showTierLabels and not na(lastEntryType) and not na(lastEntryTier) ? 
-            "T" + str.tostring(lastEntryTier) + "-" + lastEntryType : ""
+// Generate strategic labels (F-2, F-3, F-4 format per JON standards)
+entryLabel = showTierLabels and not na(lastEntryType) and not na(lastEntryTier) ? "T" + str.tostring(lastEntryTier) + "-" + lastEntryType : ""
 
-// Generate exit labels  
-exitLabel = showTierLabels and not na(lastExitType) and not na(lastExitTier) ?
-           "T" + str.tostring(lastExitTier) + "-" + lastExitType : ""
+exitLabel = showTierLabels and not na(lastExitType) and not na(lastExitTier) ? "T" + str.tostring(lastExitTier) + "-" + lastExitType : ""
 
-// Entry arrows (bright blue, upward)
-plotshape(
-    showEntryArrows and entryDetected, 
-    title="Entry Arrow",
-    style=shape.arrowup, 
-    location=location.belowbar, 
-    color=BRIGHT_BLUE, 
-    size=arrowSizeValue,
-    text=entryLabel
-)
+// Conditional arrow plotting with different sizes and tier labels (Pine Script v6 compatible approach)
+// Small arrows
+plotshape(showEntryArrows and entryDetected and arrowSize == "Small", "Entry Small", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.small, text=entryLabel, textcolor=BRIGHT_BLUE)
+plotshape(showExitArrows and exitDetected and arrowSize == "Small", "Exit Small", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.small, text=exitLabel, textcolor=BRIGHT_ORANGE)
 
-// Exit arrows (bright orange, downward) 
-plotshape(
-    showExitArrows and exitDetected,
-    title="Exit Arrow", 
-    style=shape.arrowdown,
-    location=location.abovebar,
-    color=BRIGHT_ORANGE,
-    size=arrowSizeValue,
-    text=exitLabel
-)
+// Normal arrows  
+plotshape(showEntryArrows and entryDetected and arrowSize == "Normal", "Entry Normal", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.normal, text=entryLabel, textcolor=BRIGHT_BLUE)
+plotshape(showExitArrows and exitDetected and arrowSize == "Normal", "Exit Normal", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.normal, text=exitLabel, textcolor=BRIGHT_ORANGE)
 
-// Position status background (very subtle)
-positionColor = strategy.position_size > 0 ? SUBTLE_GREEN : na
-bgcolor(showStopLevels ? positionColor : na, title="Position Status")
+// Large arrows
+plotshape(showEntryArrows and entryDetected and arrowSize == "Large", "Entry Large", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.large, text=entryLabel, textcolor=BRIGHT_BLUE)
+plotshape(showExitArrows and exitDetected and arrowSize == "Large", "Exit Large", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.large, text=exitLabel, textcolor=BRIGHT_ORANGE)
+
+// Background colors for trade zones (per pinescriptrules.txt standards)
+positionZone = strategy.position_size > 0
+bgcolor(showStopLevels and positionZone ? SUBTLE_GREEN : na, title="Position Status")

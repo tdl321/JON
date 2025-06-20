@@ -114,12 +114,15 @@ The JON strategy UI prioritizes **clarity, precision, and immediate actionabilit
 - **Behavior**: Shrinks/expands as trailing stop adjusts
 
 ### Zone Implementation Technical Requirements
-- **Duration Tracking**: Zones persist from trade entry to exit
-- **No Trade Periods**: No zones displayed when position size = 0
+- **Historical Persistence**: Zones remain visible for ALL past trades (not just current)
+- **Duration Tracking**: Each trade gets its own complete zone set from entry to exit
+- **No Trade Periods**: Current zones only disappear when no active position
+- **Historical Zones**: Past trade zones remain permanently visible on chart
 - **Scalable Anchoring**: Must work across all timeframes (1m to 1M)
-- **Performance**: Efficient cleanup to prevent memory issues
-- **Updates**: Real-time adjustment as stop loss trails
-- **Boundaries**: Dynamic upper/lower bounds based on position state
+- **Performance**: Array-based management for multiple zone sets
+- **Memory Management**: 500 object limit handling with oldest zone cleanup
+- **Updates**: Real-time adjustment for active trade, static for historical trades
+- **Boundaries**: Dynamic for active trades, fixed for completed trades
 
 ## Implementation Requirements
 
@@ -160,7 +163,9 @@ All visual elements should be controllable via input parameters:
 - `showProfitZone`: Enable/disable profit zone display
 - `showRiskZone`: Enable/disable risk zone display
 - `showStopLossLine`: Control stop loss line visibility
+- `showHistoricalZones`: Enable/disable historical zone preservation
 - `zoneTransparency`: Adjustable zone transparency (80-95)
+- `maxHistoricalZones`: Maximum historical zones to keep (10-100)
 
 ## Future Enhancements
 - **Color customization**: User-defined color schemes

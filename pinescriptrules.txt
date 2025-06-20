@@ -70,10 +70,8 @@ adjustedRisk = assetPreset == "Crypto (BTC)" ? baseRisk * 0.8 :
 ### Comprehensive Validation Framework
 ```pinescript
 // Master validation - ALL must pass for trading
-// 1. Basic Market Data
-basicDataValid = not na(close) and not na(high) and not na(low) and not na(open) and 
-                 close > 0 and high > 0 and low > 0 and open > 0 and 
-                 high >= low and high >= close and low <= close and volume >= 0
+// 1. Basic Market Data (SINGLE LINE to prevent syntax errors)
+basicDataValid = not na(close) and not na(high) and not na(low) and not na(open) and close > 0 and high > 0 and low > 0 and open > 0 and high >= low and high >= close and low <= close and volume >= 0
 
 // 2. ATR and Technical Indicators
 atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
@@ -95,10 +93,8 @@ historicalDataSufficient = bar_index >= (maxLookbackRequired + 50)
 // 6. Mathematical Safety (Division by Zero Prevention)
 mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0
 
-// MASTER VALIDATION - NO TRADING WITHOUT THIS
-isDataValid = basicDataValid and atrDataValid and trendDataValid and 
-              referenceDataValid and monthlyDataValid and 
-              historicalDataSufficient and mathSafetyValid
+// MASTER VALIDATION - NO TRADING WITHOUT THIS (SINGLE LINE to prevent syntax errors)
+isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and monthlyDataValid and historicalDataSufficient and mathSafetyValid
 ```
 
 ### Debug Logging for Validation Failures
@@ -295,7 +291,39 @@ if strategy.position_size > 0 and trailStartActivated
 
 ## Common Gotchas & Solutions
 
-### 1. Repainting Prevention
+### 1. Line Continuation Syntax (CRITICAL HIGH PRIORITY)
+```pinescript
+// ❌ WRONG - Indented continuation lines cause "Syntax error at input '+'" 
+breakoutCondition = traditionalBreakout and 
+                   volumeSpikeBreakout and 
+                   trendFilterPassed
+
+// ❌ WRONG - Multi-line function calls with indentation
+currentZone := box.new(
+    left=bar1,
+    top=high,
+    right=bar2,
+    bottom=low
+)
+
+// ✅ CORRECT - Single line format (preferred for Pine Script)
+breakoutCondition = traditionalBreakout and volumeSpikeBreakout and trendFilterPassed
+
+// ✅ CORRECT - Single line function calls
+currentZone := box.new(left=bar1, top=high, right=bar2, bottom=low)
+
+// ✅ ACCEPTABLE - If continuation needed, start at column 0 (no indentation)
+longCondition = enableBreakout and isTrendBullish and 
+strategy.position_size == 0 and breakoutDetected
+```
+
+**CRITICAL RULES:**
+- **NEVER** indent continuation lines in Pine Script
+- **ALL** continuation lines must start at column 0
+- **PREFER** single-line format for function calls
+- **SYSTEMATIC CHECK**: Use `grep -n "^[ \\t]+.*and$\|^[ \\t]+.*or$" *.pine` to find violations
+
+### 2. Repainting Prevention
 ```pinescript
 // ✅ Use barstate.isconfirmed for final signals
 signal = barstate.isconfirmed and conditionMet
@@ -330,3 +358,92 @@ if unitSize > 0 and unitSize <= maxPositionSize
 - Asset presets: Crypto(0.8x), Indices(1.2x), Metals(1.0x), Global Default(1.0x)
 - Comprehensive data validation covers OHLC, ATR, SMA, request.security, volume, history, math safety
 - All trading functions protected by master validation check 
+
+# Pine Script Rules for JON Strategy
+
+## CRITICAL RULES - MUST FOLLOW
+
+### 1. Pine Script v6 Function Return Type Compatibility (CRITICAL - Issue #9)
+**Date Added**: 2025-01-16
+**Problem**: "Return type of one of the 'if' or 'switch' blocks is not compatible with return type of other block(s)"
+
+**MANDATORY RULES**:
+- **ALL void functions MUST end with explicit `na` return statement**
+- **NEVER use if/else structures in void functions - use separate if statements**
+- **Test compilation after ANY function modifications**
+
+### 2. Pine Script v6 Global Variable Scope Restrictions (CRITICAL - Issue #9 UPDATE)
+**Date Added**: 2025-01-16
+**Problem**: "Cannot modify global variable 'variableName' in function"
+
+**MANDATORY RULES**:
+- **NEVER modify global variables (declared with `var`) inside user-defined functions**
+- **Move ALL logic that modifies global variables to main script scope**
+- **Use inline conditional logic instead of functions for state management**
+- **Functions can only return values - main scope must handle assignments**
+
+### 3. Line Continuation Syntax (CRITICAL)
+**Date Added**: 2025-01-16
+**Problem**: "Syntax error at input 'end of line without line continuation'"
+
+**MANDATORY RULES**:
+- **NEVER indent continuation lines - they must start at column 0**
+- **Use single-line format for complex function calls when possible**
+- **Test all multi-line expressions for Pine Script v6 compliance**
+
+### 4. Data Validation Requirements (CRITICAL)
+**Date Added**: 2025-01-15
+**Problem**: Missing validation caused runtime errors and fallback logic failures
+
+**MANDATORY RULES**:
+- **ALL trading functions must validate data before execution**
+- **NO FALLBACK logic - complete valid data required**
+- **Check for na, negative, or zero values in critical calculations**
+- **Use historicalDataSufficient check before any trading operations**
+
+### 5. String Concatenation and Conditional Logic (IMPORTANT)
+**Date Added**: 2025-01-16
+
+**RULES**:
+- **Use ternary operators for conditional string building**
+- **Validate all variables before string conversion**
+- **Test string concatenation in complex conditional expressions**
+
+**Examples**:
+```pinescript
+// ✅ CORRECT - proper conditional string building
+entryLabel = showTierLabels and not na(lastEntryType) and not na(lastEntryTier) ? 
+             "T" + str.tostring(lastEntryTier) + "-" + lastEntryType : ""
+```
+
+## TESTING REQUIREMENTS
+
+### Before Every Commit:
+1. **Syntax Check**: Ensure Pine Script v6 compilation success
+2. **Scope Validation**: No global variable modifications in functions
+3. **Data Validation**: All trading functions check for valid data
+4. **Line Continuation**: All multi-line expressions properly formatted
+5. **Memory Management**: Arrays and drawing objects properly managed
+
+### Error Prevention Commands:
+```bash
+# Check for dangerous global variable modifications in functions
+grep -n "var.*:=" *.pine
+
+# Check for potential line continuation issues  
+grep -n "^[ \\t]+.*and$\|^[ \\t]+.*or$" *.pine
+
+# Check for missing data validation
+grep -n "strategy\." *.pine | grep -v "na("
+```
+
+## HISTORICAL ISSUES RESOLVED
+
+### Issue #9: Pine Script v6 Scope and Syntax Errors (RESOLVED 2025-01-16)
+- **Problem**: Multiple compilation failures due to global variable modifications in functions
+- **Solution**: Eliminated all user-defined functions that modify global variables, moved logic to main scope
+- **Key Changes**: 
+  - Removed `finalizeTradeZones()` and `manageZoneArraySize()` functions
+  - Moved zone management logic inline to main script scope
+  - Applied proper Pine Script v6 architectural patterns
+- **Result**: Strategy now compiles successfully in Pine Script v6
