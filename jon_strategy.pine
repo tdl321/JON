@@ -84,6 +84,7 @@ showStopLossLine = input.bool(true, "Show Stop Loss Line", group = "Display Sett
 showHistoricalZones = input.bool(true, "Show Historical Zones", group = "Display Settings")
 zoneTransparency = input.int(85, "Zone Transparency", minval = 80, maxval = 95, group = "Display Settings")
 maxHistoricalZones = input.int(50, "Max Historical Zones", minval = 10, maxval = 100, group = "Display Settings")
+showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings")
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                  C O R E   I N D I C A T O R S                             |
@@ -269,10 +270,12 @@ if strategy.position_size == 0 and entryCondition and not na(atr) and atr > 0 an
             // Track entry for UI labels
             lastEntryType := entryType
             lastEntryTier := 1
-            
-            // Initialize trade tracking for zones
-            tradeStartBar := bar_index
-            tradeEntryPrice := close
+
+// Initialize trade tracking for zones AFTER position is confirmed
+if strategy.position_size > 0 and strategy.position_size[1] == 0
+    // Trade just started - initialize zone tracking
+    tradeStartBar := bar_index
+    tradeEntryPrice := strategy.position_avg_price
 
 // Pyramiding execution (TIER SYSTEM LOGIC)
 if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr > 0
@@ -382,73 +385,75 @@ if array.size(historicalStopLossLines) > MAX_ZONES
     if not na(oldLine)
         line.delete(oldLine)
 
-// Zone management for ACTIVE trades (with validation per pinescriptrules.txt)
-if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStartBar) and currentStopPrice > 0
-    // Calculate zone boundaries (with safety validation)
+// Zone management for ACTIVE trades (per UI.mdc specifications)
+if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStartBar) and not na(tradeEntryPrice) and currentStopPrice > 0
+    // Calculate zone boundaries per UI.mdc requirements
     currentPrice = close
-    upperBound = high > 0 ? high * 1.05 : close * 1.05  // Dynamic upper bound with validation
-    lowerBound = currentStopPrice
+    // UI.mdc: "From current price to upper chart area" - use dynamic upper bound
+    upperBound = math.max(high * 1.05, currentPrice * 1.10)  // Ensure adequate upper range
     
-    // Current Profit Zone: Current price to upper chart area (with validation)
-    if showProfitZone and upperBound > currentPrice and tradeStartBar <= bar_index
-        // Delete existing current profit zone
-        if not na(currentProfitZone)
-            box.delete(currentProfitZone)
-        
-        // Create new profit zone with validation (per pinescriptrules.txt error prevention)
-        currentProfitZone := box.new(left=tradeStartBar, top=upperBound, right=bar_index, bottom=currentPrice, bgcolor=PROFIT_ZONE_COLOR, border_color=color.new(color.green, 50), border_width=1, extend=extend.right)
+    // Create or update Current Profit Zone: Entry price to upper chart area (per UI.mdc)
+    if showProfitZone and upperBound > tradeEntryPrice and tradeStartBar <= bar_index
+        // Only create zone once, then update its right boundary
+        if na(currentProfitZone)
+            currentProfitZone := box.new(left=tradeStartBar, top=upperBound, right=bar_index, bottom=tradeEntryPrice, bgcolor=PROFIT_ZONE_COLOR, border_color=color.new(color.green, 50), border_width=1, extend=extend.right)
+        else
+            // Update existing zone boundaries
+            box.set_right(currentProfitZone, bar_index)
+            box.set_top(currentProfitZone, upperBound)
     
-    // Current Risk Zone: Current price to stop loss (with validation)
-    if showRiskZone and currentPrice > lowerBound and lowerBound > 0 and tradeStartBar <= bar_index
-        // Delete existing current risk zone
-        if not na(currentRiskZone)
-            box.delete(currentRiskZone)
-        
-        // Create new risk zone with validation (per pinescriptrules.txt error prevention)
-        currentRiskZone := box.new(left=tradeStartBar, top=currentPrice, right=bar_index, bottom=lowerBound, bgcolor=RISK_ZONE_COLOR, border_color=color.new(color.red, 50), border_width=1, extend=extend.right)
+    // Create or update Current Risk Zone: Entry price to stop loss (per UI.mdc)
+    if showRiskZone and tradeEntryPrice > currentStopPrice and currentStopPrice > 0 and tradeStartBar <= bar_index
+        // Only create zone once, then update its right boundary and stop level
+        if na(currentRiskZone)
+            currentRiskZone := box.new(left=tradeStartBar, top=tradeEntryPrice, right=bar_index, bottom=currentStopPrice, bgcolor=RISK_ZONE_COLOR, border_color=color.new(color.red, 50), border_width=1, extend=extend.right)
+        else
+            // Update existing zone boundaries (stop loss may trail up)
+            box.set_right(currentRiskZone, bar_index)
+            box.set_bottom(currentRiskZone, currentStopPrice)
     
-    // Current Stop Loss Line: Continuous line across trade duration (with validation)
+    // Create or update Current Stop Loss Line: Dynamic line across trade duration (per UI.mdc)
     if showStopLossLine and currentStopPrice > 0 and tradeStartBar <= bar_index
-        // Delete existing current stop loss line
-        if not na(currentStopLossLine)
-            line.delete(currentStopLossLine)
-        
-        // Create new stop loss line with validation (per pinescriptrules.txt error prevention)
-        currentStopLossLine := line.new(x1=tradeStartBar, y1=currentStopPrice, x2=bar_index, y2=currentStopPrice, color=DARK_RED_LINE, width=2, extend=extend.right, style=line.style_solid)
+        // Only create line once, then update its position
+        if na(currentStopLossLine)
+            currentStopLossLine := line.new(x1=tradeStartBar, y1=currentStopPrice, x2=bar_index, y2=currentStopPrice, color=DARK_RED_LINE, width=2, extend=extend.right, style=line.style_solid)
+        else
+            // Update existing line position (for trailing stops)
+            line.set_xy2(currentStopLossLine, bar_index, currentStopPrice)
+            line.set_y1(currentStopLossLine, currentStopPrice)
 
-// Handle trade EXIT - finalize zones and preserve them historically (moved to main scope per Pine Script v6)
+// Handle trade EXIT - finalize zones and preserve them historically (per UI.mdc requirements)
 if strategy.position_size == 0 and strategy.position_size[1] > 0
-    // Trade just closed - finalize the zones
+    // Trade just closed - finalize the zones with proper historical representation
     tradeExitPrice := close
     
-    // Finalize zones inline (no functions modifying global variables)
+    // Finalize zones to represent actual trade performance per UI.mdc
     if showHistoricalZones
-        // Preserve zones historically
+        // Preserve profit zone historically (entry to actual high reached or exit)
         if not na(currentProfitZone) and showProfitZone
-            // Update current profit zone with final boundaries
+            // Finalize profit zone: from entry to highest price reached during trade (or upper bound)
             box.set_right(currentProfitZone, bar_index)
-            box.set_bottom(currentProfitZone, tradeExitPrice)
-            // Move to historical array
+            // Keep the profit zone as it was during the trade (shows potential profit area)
             array.push(historicalProfitZones, currentProfitZone)
             currentProfitZone := na
         
+        // Preserve risk zone historically (entry to final stop loss level)
         if not na(currentRiskZone) and showRiskZone
-            // Update current risk zone with final boundaries
+            // Finalize risk zone: from entry to final stop loss level
             box.set_right(currentRiskZone, bar_index)
-            box.set_top(currentRiskZone, tradeExitPrice)
-            // Move to historical array
+            // Risk zone shows the risk area from entry to final stop level
             array.push(historicalRiskZones, currentRiskZone)
             currentRiskZone := na
         
+        // Preserve stop loss line historically 
         if not na(currentStopLossLine) and showStopLossLine
-            // Update current stop loss line with final endpoint
+            // Finalize stop loss line at its final position
             line.set_x2(currentStopLossLine, bar_index)
-            // Move to historical array
             array.push(historicalStopLossLines, currentStopLossLine)
             currentStopLossLine := na
     
     if not showHistoricalZones
-        // Delete current zones if not preserving historically
+        // Clean up current zones if not preserving historically
         if not na(currentProfitZone)
             box.delete(currentProfitZone)
             currentProfitZone := na
@@ -459,7 +464,7 @@ if strategy.position_size == 0 and strategy.position_size[1] > 0
             line.delete(currentStopLossLine)
             currentStopLossLine := na
     
-    // Reset current trade tracking
+    // Reset current trade tracking for next trade
     tradeStartBar := na
     tradeEntryPrice := na
 
@@ -501,3 +506,23 @@ plotshape(showExitArrows and exitDetected and arrowSize == "Large", "Exit Large"
 // Background colors for trade zones (per pinescriptrules.txt standards)
 positionZone = strategy.position_size > 0
 bgcolor(showStopLevels and positionZone ? SUBTLE_GREEN : na, title="Position Status")
+
+// Debug information table (can be enabled via input)
+if showDebugInfo and strategy.position_size > 0
+    debugTable = table.new(position.top_right, 2, 8, bgcolor=color.new(color.white, 80), border_width=1)
+    table.cell(debugTable, 0, 0, "Trade Status", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 1, 0, "Values", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 0, 1, "Position Size", text_size=size.small)
+    table.cell(debugTable, 1, 1, str.tostring(strategy.position_size, "##.##"), text_size=size.small)
+    table.cell(debugTable, 0, 2, "Entry Price", text_size=size.small)
+    table.cell(debugTable, 1, 2, not na(tradeEntryPrice) ? str.tostring(tradeEntryPrice, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 3, "Current Stop", text_size=size.small)
+    table.cell(debugTable, 1, 3, not na(currentStopPrice) ? str.tostring(currentStopPrice, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 4, "Trade Start Bar", text_size=size.small)
+    table.cell(debugTable, 1, 4, not na(tradeStartBar) ? str.tostring(tradeStartBar) : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 5, "Profit Zone", text_size=size.small)
+    table.cell(debugTable, 1, 5, not na(currentProfitZone) ? "Active" : "None", text_size=size.small)
+    table.cell(debugTable, 0, 6, "Risk Zone", text_size=size.small)
+    table.cell(debugTable, 1, 6, not na(currentRiskZone) ? "Active" : "None", text_size=size.small)
+    table.cell(debugTable, 0, 7, "Stop Line", text_size=size.small)
+    table.cell(debugTable, 1, 7, not na(currentStopLossLine) ? "Active" : "None", text_size=size.small)
