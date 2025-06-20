@@ -127,8 +127,7 @@ unitRiskAmountDollars = strategy.equity * (unitRiskPercent / 100.0)
 
 // Dynamic volatility adjustment for trailing stops
 avgAtr = ta.sma(atr, volatilityLookback)
-volatilityAdjustment = enableDynamicTrail and not na(avgAtr) and avgAtr > 0 and not na(atr) and atr > 0 ? 
-                      (atr / avgAtr > 1.2 ? 1.3 : atr / avgAtr < 0.8 ? 0.7 : 1.0) : 1.0
+volatilityAdjustment = enableDynamicTrail and not na(avgAtr) and avgAtr > 0 and not na(atr) and atr > 0 ? (atr / avgAtr > 1.2 ? 1.3 : atr / avgAtr < 0.8 ? 0.7 : 1.0) : 1.0
 
 // Adjusted trail multiplier with dynamic volatility
 adjustedAtrTrailMultiplier = atrTrailMultiplier * volatilityAdjustment
@@ -292,9 +291,7 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
     pyramidCondition = atrThresholdMet and priceDistanceOk
     
     // Risk check: ensure we don't exceed max trade risk
-    currentTradeRisk = strategy.equity > 0 ? 
-                      (strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100) : 
-                      100.0  // If equity is 0 or negative, assume max risk
+    currentTradeRisk = strategy.equity > 0 ? (strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100) : 100.0
     wouldExceedMaxRisk = currentTradeRisk + unitRiskPercent > maxTradeRiskPercent
     
     if pyramidCondition and not wouldExceedMaxRisk
