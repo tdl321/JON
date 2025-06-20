@@ -1,0 +1,110 @@
+# JON ENHANCED HYBRID PRESET
+# Combining MTP BETA v4 lessons with Donchian Channel compatibility
+# Target: Reduce whipsaws while maintaining Donchian simplicity
+
+# ——————————————————————————————————————————————————————————————————
+# MTP LESSONS APPLIED TO DONCHIAN SYSTEM
+# ——————————————————————————————————————————————————————————————————
+
+# F-1: ENHANCED TREND FILTER (MTP-inspired)
+trendFilterEnabled = true
+trendSmaLength = 200
+trendCushionPct = 0.5          # Reduced from 1.0 (less restrictive)
+# TODO: Add reference asset correlation logic
+
+# F-2: DONCHIAN BREAKOUT WITH AGE VALIDATION (Hybrid approach)
+enableBreakoutEntry = true
+donchianPeriod = 55            # Keep current (good compromise)
+breakoutBufferATR = 0.1        # Keep current
+# NEW: Age validation parameters
+breakoutMinAge = 20            # Don't trade recent highs
+breakoutMaxAge = 200           # Don't trade ancient highs
+
+# F-3: DONCHIAN DIP BUY WITH AGE VALIDATION (Hybrid approach)  
+enableDipBuyEntry = true
+dipRecoveryBufferATR = 0.3     # Keep current
+# NEW: Age validation parameters
+dipBuyMinAge = 15              # Don't trade recent lows
+dipBuyMaxAge = 90              # Don't trade ancient lows
+
+# F-4: MTP-INSPIRED EXIT SYSTEM (Critical changes)
+exitMode = "ATR Trail"
+atrLength = 75                 # Compromise: 14 → 75 → 100
+atrTrailMultiplier = 12.0      # Compromise: 5 → 12 → 22.5
+trailStartProfitMultiplier = 3.0  # Faster activation than MTP
+trailOnTouchHigh = false       # Keep profit-based activation
+enableDynamicTrail = true
+volatilityLookback = 20        # Slightly longer
+
+# R-1 & R-2: RISK MANAGEMENT (Mostly unchanged)
+unitRiskPercent = 1.0
+maxTradeRiskPercent = 4.0  
+stopLossMultiplier = 5.0       # Keep current
+correlateAdditionalUnits = true
+correlateUnit1TrailSL = true
+
+# R-4: PYRAMIDING (Unchanged)
+enablePyramiding = true
+maxPyramidEntries = 3
+pyramidSpacingATR = 1.0
+trailSLOnPyramiding = true
+
+# ——————————————————————————————————————————————————————————————————
+# IMPLEMENTATION STRATEGY: GRADUAL ADOPTION
+# ——————————————————————————————————————————————————————————————————
+
+# PHASE 1: Quick Wins (Immediate implementation)
+# - Increase ATR length: 14 → 50
+# - Increase trail distance: 5 → 10 ATR
+# - Reduce trend cushion: 1.0% → 0.5%
+
+# PHASE 2: Age Validation (Medium complexity)
+# - Add age calculation for Donchian highs/lows
+# - Filter out recent/ancient levels
+# - Validate against historical performance
+
+# PHASE 3: Reference Asset (Advanced)
+# - Add CRYPTOCAP:TOTAL correlation
+# - Implement sector trend confirmation
+# - Test on multiple crypto assets
+
+# ——————————————————————————————————————————————————————————————————
+# EXPECTED IMPROVEMENTS:
+# ——————————————————————————————————————————————————————————————————
+
+# 1. REDUCED WHIPSAWS:
+#    - Longer ATR = more stable stops
+#    - Wider trails = survive corrections
+#    - Age validation = fewer false signals
+
+# 2. BETTER TREND CAPTURE:
+#    - Longer holding periods
+#    - Survive 20-30% corrections
+#    - Capture full trend cycles
+
+# 3. MAINTAINED SIMPLICITY:
+#    - Keep Donchian channel logic
+#    - Gradual parameter evolution
+#    - No architectural overhaul needed
+
+# ——————————————————————————————————————————————————————————————————
+# RISK CONSIDERATIONS:
+# ——————————————————————————————————————————————————————————————————
+
+# 1. LARGER DRAWDOWNS:
+#    - Wider stops = bigger individual losses
+#    - Longer holds = deeper corrections
+#    - Solution: Maintain 1% unit risk
+
+# 2. FEWER TRADES:
+#    - Age validation = fewer entries
+#    - Longer ATR = less reactive
+#    - Solution: Multiple asset coverage
+
+# 3. LATE ENTRIES:
+#    - Age requirements = miss early moves
+#    - Solution: Multiple tier system captures momentum
+
+# COMPATIBILITY VERDICT: HIGH
+# Donchian channels can adopt MTP principles without architectural changes
+# Focus on ATR periods and age validation for maximum impact 

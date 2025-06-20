@@ -1,11 +1,11 @@
-// © 2025 JON Systems - SIMPLE VERSION
+// © 2025 JON Systems - ROBUST VERSION
 //@version=6
-strategy("JON - Simple Trend Following Strategy",
-     shorttitle="JON-SIMPLE",
+strategy("JON - Robust Multi-Asset Trend Following",
+     shorttitle="JON-ROBUST",
      overlay=true,
      pyramiding=4,
      default_qty_type=strategy.fixed,
-     initial_capital=40000,
+     initial_capital=100000,
      currency=currency.USD,
      commission_type=strategy.commission.percent,
      commission_value=0.1)
@@ -13,54 +13,70 @@ strategy("JON - Simple Trend Following Strategy",
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                S T R A T E G Y   I N F O R M A T I O N                       |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// JON Simple Strategy - Jerry Parker inspired trend following system
+// JON Robust Strategy - Jerry Parker inspired with multi-asset/timeframe robustness
 //
 // Core Philosophy:
-// - Simple and Robust: Works across all markets and timeframes
-// - Rolling Donchian Breakouts: No complex calendar monthly data
-// - Advanced Risk Management: Correlation logic and dynamic adjustments
-// - Sophisticated Exit System: Multi-unit trailing stops
-// - Jerry Parker Entry + Modern Risk Management
+// ✅ ROBUST: Works across ALL markets (crypto, indices, futures, metals) and timeframes
+// ✅ SIMPLE: Occam's razor - only essential fixes, maximum compatibility
+// ✅ TIMEFRAME ABSTRACTION: All logic runs on configurable base timeframe
+// ✅ FUTURES-AWARE: Proper position sizing using contract point values
+// ✅ ASSET AGNOSTIC: No hard-coded assumptions about price or volatility
 //
-// Entry Triggers (SIMPLIFIED):
-// 1. Donchian Breakout: Close above 20-day high + ATR buffer
-// 2. Dip Recovery: Close above 20-day low + larger ATR buffer (mean reversion)
+// ROBUSTNESS FIXES (3 Critical Issues Solved):
+// 1. Time-frame Independence: Configurable base timeframe via request.security()
+// 2. Futures Position Sizing: Uses syminfo.pointvalue for proper contract risk
+// 3. Data Validation: Contract metadata and historical data sufficiency checks
 //
-// Risk Management (PRESERVED):
+// Entry Triggers (TIMEFRAME-ROBUST):
+// 1. Donchian Breakout: baseTF close above Donchian high + ATR buffer
+// 2. Dip Recovery: baseTF close above Donchian low + larger ATR buffer
+//
+// Risk Management (FUTURES-COMPATIBLE):
 // - 1% risk per unit, max 4% total trade risk (4 units max)
+// - Contract-aware position sizing (futures vs. spot/CFD)
 // - 5 ATR initial stop loss with correlation logic
 // - Dynamic ATR-based trailing stops (volatility responsive)
 // - 1 ATR spacing between pyramid units
-// - Individual stops initially, unified trailing at 5 ATR profit
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                  I N P U T   P A R A M E T E R S                           |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
+// --- R-0: ROBUSTNESS SETTINGS (CRITICAL FOR MULTI-ASSET/TIMEFRAME) ---
+baseTF = input.timeframe("1D", "Base Timeframe", group = "Robustness (R-0)", tooltip = "All strategy logic runs on this timeframe regardless of chart TF")
+enableFuturesMode = input.bool(true, "Enable Futures Position Sizing", group = "Robustness (R-0)", tooltip = "Use contract point value for proper futures risk calculation")
+
 // --- F-1: TREND FILTER SETTINGS ---
 trendFilterEnabled = input.bool(true, "Enable 200 SMA Trend Filter", group = "Trend Filter (F-1)")
 trendSmaLength = input.int(200, "Trend SMA Length", minval = 50, maxval = 500, group = "Trend Filter (F-1)")
+trendCushionPct = input.float(0.5, "Trend Cushion %", minval = 0.0, maxval = 5.0, step = 0.1, group = "Trend Filter (F-1)", tooltip = "Price must be this % above SMA to be considered bullish")
 
 // --- F-2: BREAKOUT ENTRY SETTINGS ---
 enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakout Entry (F-2)")
-donchianPeriod = input.int(20, "Donchian Period", minval = 10, maxval = 55, group = "Breakout Entry (F-2)")
+donchianPeriod = input.int(55, "Donchian Period", minval = 10, maxval = 55, group = "Breakout Entry (F-2)")
 breakoutBufferATR = input.float(0.1, "Breakout Buffer (ATR multiplier)", minval = 0.0, maxval = 0.5, step = 0.05, group = "Breakout Entry (F-2)")
+enableAgeValidation = input.bool(true, "Enable Age Validation", group = "Breakout Entry (F-2)", tooltip = "Only trade highs/lows that are aged properly (MTP-inspired)")
+breakoutMinAge = input.int(20, "Min Age of High (bars)", minval = 5, maxval = 50, group = "Breakout Entry (F-2)")
+breakoutMaxAge = input.int(200, "Max Age of High (bars)", minval = 50, maxval = 300, group = "Breakout Entry (F-2)")
 
 // --- F-3: DIP BUY ENTRY SETTINGS ---
 enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy Entry (F-3)")
 dipRecoveryBufferATR = input.float(0.3, "Dip Recovery Buffer (ATR multiplier)", minval = 0.1, maxval = 0.5, step = 0.05, group = "Dip Buy Entry (F-3)")
+dipBuyMinAge = input.int(15, "Min Age of Low (bars)", minval = 5, maxval = 50, group = "Dip Buy Entry (F-3)")
+dipBuyMaxAge = input.int(90, "Max Age of Low (bars)", minval = 30, maxval = 200, group = "Dip Buy Entry (F-3)")
 
 // --- F-4: EXIT STRATEGY SETTINGS ---
 exitMode = input.string("ATR Trail", "Exit Strategy Mode", options = ["ATR Trail"], group = "Exit Strategy (F-4)")
-atrTrailMultiplier = input.float(5.0, "Trailing Distance x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Exit Strategy (F-4)")
+atrTrailMultiplier = input.float(22.5, "Trailing Distance x ATR", minval = 0.5, maxval = 25.0, step = 0.5, group = "Exit Strategy (F-4)")
 trailStartProfitMultiplier = input.float(5.0, "Trailing Start at Profit x ATR", minval = 1.0, maxval = 20.0, step = 0.1, group = "Exit Strategy (F-4)")
+trailActivationMode = input.string("Touch High", "Trail Activation Mode", options = ["Profit Level", "Touch High"], group = "Exit Strategy (F-4)", tooltip = "Profit Level: Start trailing after X ATR profit | Touch High: Start trailing immediately on new highs")
 enableDynamicTrail = input.bool(true, "Enable Dynamic Trail Adjustment", group = "Exit Strategy (F-4)")
 volatilityLookback = input.int(14, "Volatility Reference Period", minval = 10, maxval = 50, group = "Exit Strategy (F-4)")
 
 // --- R-1 & R-2: RISK MANAGEMENT SETTINGS ---
 unitRiskPercent = input.float(1.0, "Risk Per Unit %", minval = 0.1, maxval = 2.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 maxTradeRiskPercent = input.float(4.0, "Max Total Trade Risk %", minval = 1.0, maxval = 8.0, step = 0.1, group = "Risk Management (R-1, R-2)")
-atrLength = input.int(14, "ATR Length", minval = 5, maxval = 50, group = "Risk Management (R-1, R-2)")
+atrLength = input.int(100, "ATR Length", minval = 5, maxval = 100, group = "Risk Management (R-1, R-2)")
 stopLossMultiplier = input.float(5.0, "Initial Stop Loss x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 correlateAdditionalUnits = input.bool(true, "Correlate Additional Units", group = "Risk Management (R-1, R-2)")
 correlateUnit1TrailSL = input.bool(true, "Correlate Unit 1 Trail SL", group = "Risk Management (R-1, R-2)")
@@ -76,8 +92,9 @@ showTrendSma = input.bool(true, "Show 200 SMA", group = "Display Settings")
 showStopLevels = input.bool(true, "Show Stop Loss Levels", group = "Display Settings")
 showEntryArrows = input.bool(true, "Show Entry Arrows", group = "Display Settings")
 showExitArrows = input.bool(true, "Show Exit Arrows", group = "Display Settings")
-showTierLabels = input.bool(true, "Show Tier-Function Labels", group = "Display Settings")
-arrowSize = input.string("Small", "Arrow Size", options = ["Small", "Normal", "Large"], group = "Display Settings")
+// showTierLabels removed - strategy IDs now use F2/F3/F4 format directly
+// Arrow size fixed to Small for cleaner UI
+arrowSize = "Small"
 showProfitZone = input.bool(true, "Show Profit Zone", group = "Display Settings")
 showRiskZone = input.bool(true, "Show Risk Zone", group = "Display Settings")
 showStopLossLine = input.bool(true, "Show Stop Loss Line", group = "Display Settings")
@@ -90,18 +107,28 @@ showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings")
 // |                                  C O R E   I N D I C A T O R S                             |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// Basic indicators
-atr = ta.atr(atrLength)
-trendSma = ta.sma(close, trendSmaLength)
+// ROBUSTNESS FIX #1: Time-frame abstraction - all logic runs on baseTF regardless of chart
+baseTF_close = request.security(syminfo.tickerid, baseTF, close, lookahead=barmerge.lookahead_off)
+baseTF_high = request.security(syminfo.tickerid, baseTF, high, lookahead=barmerge.lookahead_off)
+baseTF_low = request.security(syminfo.tickerid, baseTF, low, lookahead=barmerge.lookahead_off)
 
-// Trend filter
-isTrendBullish = not trendFilterEnabled or close > trendSma
+// Basic indicators (now timeframe-independent)
+atr = request.security(syminfo.tickerid, baseTF, ta.atr(atrLength), lookahead=barmerge.lookahead_off)
+trendSma = request.security(syminfo.tickerid, baseTF, ta.sma(close, trendSmaLength), lookahead=barmerge.lookahead_off)
 
-// Rolling Donchian channels (Jerry Parker style)
-donchianHigh = ta.highest(high, donchianPeriod)
-donchianLow = ta.lowest(low, donchianPeriod)
+// Trend filter with cushion - price must be X% above SMA to be considered bullish
+isTrendBullish = not trendFilterEnabled or baseTF_close > trendSma * (1 + trendCushionPct / 100)
 
-// Historical data sufficiency check
+// Rolling Donchian channels (Jerry Parker style) - now timeframe-independent
+donchianHigh = request.security(syminfo.tickerid, baseTF, ta.highest(high, donchianPeriod), lookahead=barmerge.lookahead_off)
+donchianLow = request.security(syminfo.tickerid, baseTF, ta.lowest(low, donchianPeriod), lookahead=barmerge.lookahead_off)
+
+// ROBUSTNESS FIX #2: Futures contract validation
+contractPointValue = enableFuturesMode ? syminfo.pointvalue : 1.0
+contractTickSize = enableFuturesMode ? syminfo.mintick : 0.01
+contractDataValid = enableFuturesMode ? (contractPointValue > 0 and contractTickSize > 0) : true
+
+// Historical data sufficiency check (timeframe-aware)
 maxLookbackRequired = math.max(trendSmaLength, atrLength, donchianPeriod, volatilityLookback)
 historicalDataSufficient = bar_index >= maxLookbackRequired
 
@@ -109,14 +136,38 @@ historicalDataSufficient = bar_index >= maxLookbackRequired
 // |                                E N T R Y   T R I G G E R S                                 |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// Secondary Entry Triggers (either can fire)
-breakoutTrigger = enableBreakoutEntry and close > (donchianHigh[1] + atr * breakoutBufferATR)
-dipRecoveryTrigger = enableDipBuyEntry and close > (donchianLow[1] + atr * dipRecoveryBufferATR)
+// Age validation calculations (MTP-inspired) - now using baseTF data
+highAge = request.security(syminfo.tickerid, baseTF, ta.barssince(high == ta.highest(high, donchianPeriod)), lookahead=barmerge.lookahead_off)
+lowAge = request.security(syminfo.tickerid, baseTF, ta.barssince(low == ta.lowest(low, donchianPeriod)), lookahead=barmerge.lookahead_off)
 
-// Combined entry condition: PRIMARY filter AND (any SECONDARY trigger)
-entryCondition = isTrendBullish and (breakoutTrigger or dipRecoveryTrigger)
+// Secondary Entry Triggers with age validation (either can fire) - using baseTF data
+basicBreakoutTrigger = enableBreakoutEntry and baseTF_close > (donchianHigh[1] + atr * breakoutBufferATR)
+ageValidBreakout = not enableAgeValidation or (highAge >= breakoutMinAge and highAge <= breakoutMaxAge)
+breakoutTrigger = basicBreakoutTrigger and ageValidBreakout
 
+basicDipRecoveryTrigger = enableDipBuyEntry and baseTF_close > (donchianLow[1] + atr * dipRecoveryBufferATR)
+ageValidDipBuy = not enableAgeValidation or (lowAge >= dipBuyMinAge and lowAge <= dipBuyMaxAge)
+dipRecoveryTrigger = basicDipRecoveryTrigger and ageValidDipBuy
 
+// Combined entry condition: ROBUSTNESS check AND PRIMARY filter AND (any SECONDARY trigger)
+entryCondition = contractDataValid and historicalDataSufficient and isTrendBullish and (breakoutTrigger or dipRecoveryTrigger)
+
+// Entry execution with data validation - now robust across timeframes and assets
+if strategy.position_size == 0 and entryCondition and not na(atr) and atr != 0 and historicalDataSufficient
+    initialStop = calculateInitialStopLoss(baseTF_close)
+    if not na(initialStop) and initialStop < baseTF_close
+        unitSize = calculateUnitSize(baseTF_close, initialStop)
+        if unitSize > 0
+            entryType = breakoutTrigger ? "F2B" : dipRecoveryTrigger ? "F3D" : "F2B"
+            entryId = "T1-" + entryType
+            
+            strategy.entry(entryId, strategy.long, qty=unitSize)
+            currentStopPrice := initialStop
+            currentTierCount := 0
+            lastTierPrice := na
+            
+            lastEntryType := entryType
+            lastEntryTier := 1
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                    R I S K   M A N A G E M E N T                             |
@@ -127,32 +178,44 @@ unitRiskAmountDollars = strategy.equity * (unitRiskPercent / 100.0)
 
 // Dynamic volatility adjustment for trailing stops
 avgAtr = ta.sma(atr, volatilityLookback)
-volatilityAdjustment = enableDynamicTrail and not na(avgAtr) and avgAtr > 0 and not na(atr) and atr > 0 ? (atr / avgAtr > 1.2 ? 1.3 : atr / avgAtr < 0.8 ? 0.7 : 1.0) : 1.0
+volatilityAdjustment = enableDynamicTrail and not na(avgAtr) and avgAtr != 0 and not na(atr) and atr != 0 ? (atr / avgAtr > 1.2 ? 1.3 : atr / avgAtr < 0.8 ? 0.7 : 1.0) : 1.0
 
 // Adjusted trail multiplier with dynamic volatility
 adjustedAtrTrailMultiplier = atrTrailMultiplier * volatilityAdjustment
 
-// @function Calculate position size based on ATR risk
+// @function Calculate position size based on ATR risk (ROBUSTNESS FIX #3: Futures-aware)
 calculateUnitSize(entryPrice, stopLossPrice) =>
     if na(entryPrice) or na(stopLossPrice) or entryPrice <= 0 or stopLossPrice <= 0 or 
-       unitRiskAmountDollars <= 0 or strategy.equity <= 0
+       unitRiskAmountDollars <= 0 or strategy.equity <= 0 or not contractDataValid
         0.0
     else
-        riskPerShare = math.abs(entryPrice - stopLossPrice)
-        if riskPerShare <= 0
-            0.0
+        if enableFuturesMode
+            // Futures position sizing using point value
+            riskPerContract = math.abs(entryPrice - stopLossPrice) * contractPointValue
+            if riskPerContract == 0
+                0.0
+            else
+                contracts = unitRiskAmountDollars / riskPerContract
+                maxContracts = strategy.equity * 0.95 / (entryPrice * contractPointValue * 0.1) // Conservative margin estimate
+                validContracts = math.min(contracts, maxContracts)
+                math.floor(validContracts)
         else
-            unitValue = unitRiskAmountDollars / riskPerShare
-            maxUnitValue = strategy.equity * 0.95 // Max 95% of equity
-            validUnitValue = math.min(unitValue, maxUnitValue)
-            math.floor(validUnitValue) // Round down to whole units
+            // Traditional position sizing (CFD/Spot style)
+            riskPerShare = math.abs(entryPrice - stopLossPrice)
+            if riskPerShare == 0
+                0.0
+            else
+                unitValue = unitRiskAmountDollars / riskPerShare
+                maxUnitValue = strategy.equity * 0.95
+                validUnitValue = math.min(unitValue, maxUnitValue)
+                math.floor(validUnitValue)
 
 // @function Calculate ATR-based stop loss
 calculateInitialStopLoss(entryPrice) =>
-    if na(entryPrice) or entryPrice <= 0 or na(atr) or atr <= 0
+    if na(entryPrice) or entryPrice <= 0 or na(atr) or atr == 0
         na
     else
-        // Simple ATR stop loss
+        // Simple ATR stop loss - accept any positive ATR value, no matter how small
         atrStopPrice = entryPrice - (atr * stopLossMultiplier)
         
         // Final safety validation - ensure stop is below entry price
@@ -173,8 +236,8 @@ var float initialStopPrice = na
 // Update exit system (PRESERVED ORIGINAL LOGIC)
 if strategy.position_size > 0 and not na(atr)
     entryPrice = strategy.position_avg_price
-    currentProfit = close - entryPrice
-    profitInATR = atr > 0 ? currentProfit / atr : 0.0
+    currentProfit = baseTF_close - entryPrice
+    profitInATR = atr != 0 ? currentProfit / atr : 0.0
     
     // Initialize initial stop price tracking
     if na(initialStopPrice) and not na(currentStopPrice)
@@ -185,18 +248,24 @@ if strategy.position_size > 0 and not na(atr)
         if na(profitActivationLevel)
             profitActivationLevel := entryPrice + (atr * trailStartProfitMultiplier)
         
-        // Check if trailing should start
+        // Check if trailing should start based on selected mode
         if not trailStartActivated
-            // Start trailing when profit threshold is reached
-            if close >= profitActivationLevel
-                trailStartActivated := true
-                atrTrailHigh := close
+            if trailActivationMode == "Touch High"
+                // MTP-style: Start trailing immediately on any new high
+                if baseTF_high > entryPrice
+                    trailStartActivated := true
+                    atrTrailHigh := baseTF_high
+            else // "Profit Level"
+                // Traditional: Start trailing when profit threshold is reached
+                if baseTF_close >= profitActivationLevel
+                    trailStartActivated := true
+                    atrTrailHigh := baseTF_close
         
         // Update trailing stop if activated
         if trailStartActivated
             // Update trail high on new highs
-            if high > atrTrailHigh
-                atrTrailHigh := high
+            if baseTF_high > atrTrailHigh
+                atrTrailHigh := baseTF_high
             
             // Calculate new trailing stop using dynamic adjustment
             newTrailStop = atrTrailHigh - (atr * adjustedAtrTrailMultiplier)
@@ -221,8 +290,8 @@ else
     profitActivationLevel := na
     initialStopPrice := na
 
-// Exit conditions
-stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and low <= currentStopPrice
+// Exit conditions - using baseTF data
+stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and baseTF_low <= currentStopPrice
 trendFilterFail = strategy.position_size > 0 and not isTrendBullish
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
@@ -252,42 +321,24 @@ var int tradeStartBar = na
 var float tradeEntryPrice = na
 var float tradeExitPrice = na
 
-// Entry execution
-if strategy.position_size == 0 and entryCondition and not na(atr) and atr > 0 and historicalDataSufficient
-    initialStop = calculateInitialStopLoss(close)
-    if not na(initialStop) and initialStop < close
-        unitSize = calculateUnitSize(close, initialStop)
-        if unitSize > 0
-            // Determine entry type for UI labeling
-            entryType = breakoutTrigger ? "F2" : dipRecoveryTrigger ? "F3" : "F2"
-            
-            strategy.entry("Tier 1 Long", strategy.long, qty=unitSize)
-            currentStopPrice := initialStop
-            currentTierCount := 0
-            lastTierPrice := na
-            
-            // Track entry for UI labels
-            lastEntryType := entryType
-            lastEntryTier := 1
-
 // Initialize trade tracking for zones AFTER position is confirmed
 if strategy.position_size > 0 and strategy.position_size[1] == 0
     // Trade just started - initialize zone tracking
     tradeStartBar := bar_index
     tradeEntryPrice := strategy.position_avg_price
 
-// Pyramiding execution (TIER SYSTEM LOGIC)
-if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr > 0
+// Pyramiding execution (TIER SYSTEM LOGIC) - now timeframe-robust with alerts
+if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr != 0
     // Calculate profit in ATR terms
     entryPrice = strategy.position_avg_price
-    profitInN = atr > 0 ? (close - entryPrice) / atr : 0.0
+    profitInN = atr != 0 ? (baseTF_close - entryPrice) / atr : 0.0
     
     // ATR threshold for next tier
     nextTierThreshold = (currentTierCount + 1) * pyramidSpacingATR
     
     // Check conditions for adding tiers
     atrThresholdMet = profitInN >= nextTierThreshold
-    priceDistanceOk = na(lastTierPrice) or math.abs(close - lastTierPrice) >= (atr * pyramidSpacingATR)
+    priceDistanceOk = na(lastTierPrice) or math.abs(baseTF_close - lastTierPrice) >= (atr * pyramidSpacingATR)
     pyramidCondition = atrThresholdMet and priceDistanceOk
     
     // Risk check: ensure we don't exceed max trade risk
@@ -296,23 +347,23 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
     
     if pyramidCondition and not wouldExceedMaxRisk
         // Calculate stop for additional tier
-        tierStopPrice = calculateInitialStopLoss(close)
+        tierStopPrice = calculateInitialStopLoss(baseTF_close)
         
         // Apply correlation logic for additional tiers
         if correlateAdditionalUnits
             tierStopPrice := math.max(tierStopPrice, currentStopPrice)
         
-        tierSize = calculateUnitSize(close, tierStopPrice)
+        tierSize = calculateUnitSize(baseTF_close, tierStopPrice)
         
         if tierSize > 0
             // Determine entry type for additional tier
-            entryType = breakoutTrigger ? "F2" : dipRecoveryTrigger ? "F3" : "F2"
+            entryType = breakoutTrigger ? "F2B" : dipRecoveryTrigger ? "F3D" : "F2B"
             tierNumber = currentTierCount + 2
-            tierId = "Tier " + str.tostring(tierNumber) + " Long"
+            tierId = "T" + str.tostring(tierNumber) + "-" + entryType
             
             strategy.entry(tierId, strategy.long, qty=tierSize)
             currentTierCount := currentTierCount + 1
-            lastTierPrice := close
+            lastTierPrice := baseTF_close
             
             // Track entry for UI labels
             lastEntryType := entryType
@@ -332,15 +383,19 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
 
 // Exit execution (WHEN TRAILING STOP IS HIT, ALL POSITIONS EXIT)
 if stopLossHit
-    // Track exit type for UI labeling
-    lastExitType := "F4"  // Trailing stop exit
+    // Track exit type for UI labeling with descriptive suffix
+    lastExitType := "F4E"  // Trailing stop exit
     lastExitTier := currentTierCount + 1  // Current total tiers
-    strategy.close_all(comment="Trailing Stop Hit")
+    exitComment = "T" + str.tostring(lastExitTier) + "-F4E"
+    
+    strategy.close_all(comment=exitComment)
 else if trendFilterFail
-    // Track exit type for UI labeling
-    lastExitType := "F1"  // Trend filter exit
+    // Track exit type for UI labeling with descriptive suffix
+    lastExitType := "F1E"  // Trend filter exit
     lastExitTier := currentTierCount + 1  // Current total tiers
-    strategy.close_all(comment="Trend Filter Fail")
+    exitComment = "T" + str.tostring(lastExitTier) + "-F1E"
+    
+    strategy.close_all(comment=exitComment)
 
 // Reset tracking on position close
 if strategy.position_size == 0
@@ -393,7 +448,7 @@ if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStart
     if showProfitZone and upperBound > tradeEntryPrice and tradeStartBar <= bar_index
         // Only create zone once, then update its right boundary
         if na(currentProfitZone)
-            currentProfitZone := box.new(left=tradeStartBar, top=upperBound, right=bar_index, bottom=tradeEntryPrice, bgcolor=PROFIT_ZONE_COLOR, border_color=color.new(color.green, 50), border_width=1, extend=extend.right)
+            currentProfitZone := box.new(left=tradeStartBar, top=upperBound, right=bar_index, bottom=tradeEntryPrice, bgcolor=PROFIT_ZONE_COLOR, border_color=color.new(color.green, 50), border_width=1, extend=extend.none)
         else
             // Update existing zone boundaries
             box.set_right(currentProfitZone, bar_index)
@@ -403,7 +458,7 @@ if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStart
     if showRiskZone and tradeEntryPrice > currentStopPrice and currentStopPrice > 0 and tradeStartBar <= bar_index
         // Only create zone once, then update its right boundary and stop level
         if na(currentRiskZone)
-            currentRiskZone := box.new(left=tradeStartBar, top=tradeEntryPrice, right=bar_index, bottom=currentStopPrice, bgcolor=RISK_ZONE_COLOR, border_color=color.new(color.red, 50), border_width=1, extend=extend.right)
+            currentRiskZone := box.new(left=tradeStartBar, top=tradeEntryPrice, right=bar_index, bottom=currentStopPrice, bgcolor=RISK_ZONE_COLOR, border_color=color.new(color.red, 50), border_width=1, extend=extend.none)
         else
             // Update existing zone boundaries (stop loss may trail up)
             box.set_right(currentRiskZone, bar_index)
@@ -413,7 +468,7 @@ if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStart
     if showStopLossLine and currentStopPrice > 0 and tradeStartBar <= bar_index
         // Only create line once, then update its position
         if na(currentStopLossLine)
-            currentStopLossLine := line.new(x1=tradeStartBar, y1=currentStopPrice, x2=bar_index, y2=currentStopPrice, color=DARK_RED_LINE, width=2, extend=extend.right, style=line.style_solid)
+            currentStopLossLine := line.new(x1=tradeStartBar, y1=currentStopPrice, x2=bar_index, y2=currentStopPrice, color=DARK_RED_LINE, width=2, extend=extend.none, style=line.style_solid)
         else
             // Update existing line position (for trailing stops)
             line.set_xy2(currentStopLossLine, bar_index, currentStopPrice)
@@ -422,7 +477,7 @@ if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStart
 // Handle trade EXIT - finalize zones and preserve them historically (per UI.mdc requirements)
 if strategy.position_size == 0 and strategy.position_size[1] > 0
     // Trade just closed - finalize the zones with proper historical representation
-    tradeExitPrice := close
+    tradeExitPrice := baseTF_close
     
     // Finalize zones to represent actual trade performance per UI.mdc
     if showHistoricalZones
@@ -482,51 +537,48 @@ plot(showTrendSma ? trendSma : na, "200 SMA", color=PROFESSIONAL_BLUE, linewidth
 entryDetected = strategy.position_size > 0 and strategy.position_size[1] == 0
 exitDetected = strategy.position_size == 0 and strategy.position_size[1] > 0
 
-// Generate strategic labels (F-2, F-3, F-4 format per JON standards)
-entryLabel = showTierLabels and not na(lastEntryType) and not na(lastEntryTier) ? "T" + str.tostring(lastEntryTier) + "-" + lastEntryType : ""
+// Strategy IDs now include F2/F3/F4 format - no separate label generation needed
 
-exitLabel = showTierLabels and not na(lastExitType) and not na(lastExitTier) ? "T" + str.tostring(lastExitTier) + "-" + lastExitType : ""
+// Entry/Exit arrows (Small size for clean UI)
+plotshape(showEntryArrows and entryDetected, "Entry Arrow", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.small)
+plotshape(showExitArrows and exitDetected, "Exit Arrow", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.small)
 
-// Conditional arrow plotting with different sizes (Pine Script v6 compatible approach)
-// Small arrows
-plotshape(showEntryArrows and entryDetected and arrowSize == "Small", "Entry Small", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.small)
-plotshape(showExitArrows and exitDetected and arrowSize == "Small", "Exit Small", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.small)
-
-// Normal arrows  
-plotshape(showEntryArrows and entryDetected and arrowSize == "Normal", "Entry Normal", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.normal)
-plotshape(showExitArrows and exitDetected and arrowSize == "Normal", "Exit Normal", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.normal)
-
-// Large arrows
-plotshape(showEntryArrows and entryDetected and arrowSize == "Large", "Entry Large", shape.arrowup, location.belowbar, BRIGHT_BLUE, size=size.large)
-plotshape(showExitArrows and exitDetected and arrowSize == "Large", "Exit Large", shape.arrowdown, location.abovebar, BRIGHT_ORANGE, size=size.large)
-
-// Tier labels using label.new (Pine Script v6 compatible for dynamic text)
-if showTierLabels and entryDetected and entryLabel != ""
-    label.new(bar_index, low, entryLabel, color=BRIGHT_BLUE, textcolor=color.white, style=label.style_label_up, size=size.small)
-
-if showTierLabels and exitDetected and exitLabel != ""
-    label.new(bar_index, high, exitLabel, color=BRIGHT_ORANGE, textcolor=color.white, style=label.style_label_down, size=size.small)
+// Strategy entry/exit IDs now use F2/F3/F4 format - no separate labels needed
 
 // Background colors for trade zones (per pinescriptrules.txt standards)
 positionZone = strategy.position_size > 0
 bgcolor(showStopLevels and positionZone ? SUBTLE_GREEN : na, title="Position Status")
 
-// Debug information table (can be enabled via input)
-if showDebugInfo and strategy.position_size > 0
-    debugTable = table.new(position.top_right, 2, 8, bgcolor=color.new(color.white, 80), border_width=1)
-    table.cell(debugTable, 0, 0, "Trade Status", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
+// Debug information table (can be enabled via input) - enhanced with robustness indicators
+if showDebugInfo
+    debugTable = table.new(position.top_right, 2, 15, bgcolor=color.new(color.white, 80), border_width=1)
+    table.cell(debugTable, 0, 0, "🛡️ ROBUST JON", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
     table.cell(debugTable, 1, 0, "Values", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
-    table.cell(debugTable, 0, 1, "Position Size", text_size=size.small)
-    table.cell(debugTable, 1, 1, str.tostring(strategy.position_size, "##.##"), text_size=size.small)
-    table.cell(debugTable, 0, 2, "Entry Price", text_size=size.small)
-    table.cell(debugTable, 1, 2, not na(tradeEntryPrice) ? str.tostring(tradeEntryPrice, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 3, "Current Stop", text_size=size.small)
-    table.cell(debugTable, 1, 3, not na(currentStopPrice) ? str.tostring(currentStopPrice, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 4, "Trade Start Bar", text_size=size.small)
-    table.cell(debugTable, 1, 4, not na(tradeStartBar) ? str.tostring(tradeStartBar) : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 5, "Profit Zone", text_size=size.small)
-    table.cell(debugTable, 1, 5, not na(currentProfitZone) ? "Active" : "None", text_size=size.small)
-    table.cell(debugTable, 0, 6, "Risk Zone", text_size=size.small)
-    table.cell(debugTable, 1, 6, not na(currentRiskZone) ? "Active" : "None", text_size=size.small)
-    table.cell(debugTable, 0, 7, "Stop Line", text_size=size.small)
-    table.cell(debugTable, 1, 7, not na(currentStopLossLine) ? "Active" : "None", text_size=size.small)
+    table.cell(debugTable, 0, 1, "⚡ Base TF", text_size=size.small)
+    table.cell(debugTable, 1, 1, baseTF, text_size=size.small)
+    table.cell(debugTable, 0, 2, "⚡ Futures Mode", text_size=size.small)
+    table.cell(debugTable, 1, 2, enableFuturesMode ? "ON" : "OFF", text_size=size.small)
+    table.cell(debugTable, 0, 3, "⚡ Contract Valid", text_size=size.small)
+    table.cell(debugTable, 1, 3, contractDataValid ? "✅" : "❌", text_size=size.small)
+    table.cell(debugTable, 0, 4, "⚡ Point Value", text_size=size.small)
+    table.cell(debugTable, 1, 4, str.tostring(contractPointValue, "##.##"), text_size=size.small)
+    table.cell(debugTable, 0, 5, "Position Size", text_size=size.small)
+    table.cell(debugTable, 1, 5, str.tostring(strategy.position_size, "##.##"), text_size=size.small)
+    table.cell(debugTable, 0, 6, "Entry Price", text_size=size.small)
+    table.cell(debugTable, 1, 6, not na(tradeEntryPrice) ? str.tostring(tradeEntryPrice, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 7, "Current Stop", text_size=size.small)
+    table.cell(debugTable, 1, 7, not na(currentStopPrice) ? str.tostring(currentStopPrice, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 8, "🔍 ATR Value", text_size=size.small)
+    table.cell(debugTable, 1, 8, not na(atr) and atr != 0 ? str.tostring(atr, "##.####") : (na(atr) ? "NA" : "ZERO"), text_size=size.small)
+    table.cell(debugTable, 0, 9, "🔍 Data Sufficient", text_size=size.small)
+    table.cell(debugTable, 1, 9, historicalDataSufficient ? "YES" : "NO", text_size=size.small)
+    table.cell(debugTable, 0, 10, "🔍 High Age", text_size=size.small)
+    table.cell(debugTable, 1, 10, not na(highAge) ? str.tostring(highAge) + " bars" : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 11, "🔍 Low Age", text_size=size.small)
+    table.cell(debugTable, 1, 11, not na(lowAge) ? str.tostring(lowAge) + " bars" : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 12, "🔍 Trail Mode", text_size=size.small)
+    table.cell(debugTable, 1, 12, trailActivationMode, text_size=size.small)
+    table.cell(debugTable, 0, 13, "Profit Zone", text_size=size.small)
+    table.cell(debugTable, 1, 13, not na(currentProfitZone) ? "Active" : "None", text_size=size.small)
+    table.cell(debugTable, 0, 14, "Risk Zone", text_size=size.small)
+    table.cell(debugTable, 1, 14, not na(currentRiskZone) ? "Active" : "None", text_size=size.small)
