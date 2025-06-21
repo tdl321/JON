@@ -1,5 +1,375 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+# Pine Script v6 Development Rules
+
+## Strategy Structure & Headers
+```pinescript
+// © 2025 Trading Systems
+//@version=6
+strategy("Strategy Name",
+    shorttitle="SHORT",
+    overlay=true,
+    pyramiding=4,
+    default_qty_type=strategy.fixed,
+    initial_capital=40000,
+    currency=currency.USD,
+    commission_type=strategy.commission.percent,
+    commission_value=0.1)
+```
+
+## Code Organization Standards
+
+### Section Headers (Use This Exact Format)
+```pinescript
+// ——————————————————————————————————————————————————————————————————————————————————————————————
+// |                                S E C T I O N   N A M E                                       |
+// ——————————————————————————————————————————————————————————————————————————————————————————————
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// 📊 SUBSECTION NAME
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+```
+
+### Variable Naming Conventions
+```pinescript
+// ✅ Good - Descriptive and clear
+isTrendBullish = close > ta.sma(close, 200)
+atrStopLoss = ta.atr(14) * stopMultiplier
+adjustedUnitRiskPercent = unitRiskPercent * 0.8
+monthlyDonchianHigh = request.security(syminfo.tickerid, "1M", ta.highest(high, 55))
+
+// ❌ Bad - Ambiguous
+trend = close > ta.sma(close, 200)
+stop = ta.atr(14) * 2
+adj = unitRisk * 0.8
+```
+
+## Critical Pine Script v6 Compliance Rules
+
+### 1. Line Continuation Syntax (CRITICAL)
+**Problem**: "Syntax error at input '+'" when using indented continuation lines
+
+```pinescript
+// ❌ WRONG - Indented continuation lines cause syntax errors
+breakoutCondition = traditionalBreakout and 
+                   volumeSpikeBreakout and 
+                   trendFilterPassed
+
+// ❌ WRONG - Multi-line function calls with indentation
+currentZone := box.new(
+    left=bar1,
+    top=high,
+    right=bar2,
+    bottom=low
+)
+
+// ✅ CORRECT - Single line format (preferred)
+breakoutCondition = traditionalBreakout and volumeSpikeBreakout and trendFilterPassed
+
+// ✅ CORRECT - Single line function calls
+currentZone := box.new(left=bar1, top=high, right=bar2, bottom=low)
+
+// ✅ ACCEPTABLE - If continuation needed, start at column 0 (no indentation)
+longCondition = enableBreakout and isTrendBullish and 
+strategy.position_size == 0 and breakoutDetected
+```
+
+**CRITICAL RULES:**
+- **NEVER** indent continuation lines in Pine Script
+- **ALL** continuation lines must start at column 0
+- **PREFER** single-line format for function calls
+- **SYSTEMATIC CHECK**: Use `grep -n "^[ \\t]+.*and$\|^[ \\t]+.*or$" *.pine` to find violations
+
+### 2. Global Variable Scope Restrictions (CRITICAL)
+**Problem**: "Cannot modify global variable in function"
+
+```pinescript
+// ❌ WRONG - Modifying global variables in functions
+var float globalStop = na
+calculateStop() =>
+    globalStop := close - atr * 2.0  // ERROR: Cannot modify global variable
+
+// ✅ CORRECT - Functions return values, main scope handles assignments
+calculateStop() =>
+    close - atr * 2.0
+
+// In main scope:
+if strategy.position_size > 0
+    globalStop := calculateStop()
+```
+
+**MANDATORY RULES:**
+- **NEVER** modify global variables (declared with `var`) inside user-defined functions
+- **Move** ALL logic that modifies global variables to main script scope
+- **Use** inline conditional logic instead of functions for state management
+- **Functions** can only return values - main scope must handle assignments
+
+### 3. Function Return Type Compatibility
+**Problem**: "Return type not compatible between if/else blocks"
+
+```pinescript
+// ❌ WRONG - Inconsistent return types
+myFunction() =>
+    if condition
+        "text"
+    else
+        na  // Different type than string
+
+// ✅ CORRECT - Consistent return types
+myFunction() =>
+    if condition
+        "text"
+    else
+        ""  // Same type as string
+
+// ✅ CORRECT - Explicit na handling for void functions
+voidFunction() =>
+    if condition
+        // Do something
+        na
+    na  // Explicit return for void functions
+```
+
+## Data Validation Patterns (CRITICAL)
+
+### Comprehensive Validation Framework
+```pinescript
+// Master validation - ALL must pass for trading (SINGLE LINE to prevent syntax errors)
+basicDataValid = not na(close) and not na(high) and not na(low) and not na(open) and close > 0 and high > 0 and low > 0 and open > 0 and high >= low and high >= close and low <= close and volume >= 0
+
+// ATR and Technical Indicators
+atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
+
+// Trend Filter Data
+trendDataValid = not na(trendSma) and trendSma > 0 and bar_index >= trendSmaLength
+referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and referenceClose > 0)
+
+// Monthly Data from request.security (CRITICAL)
+monthlyDataValid = not na(monthlyDonchianHigh) and not na(monthlyDonchianLow) and monthlyDonchianHigh > 0 and monthlyDonchianLow > 0 and monthlyDonchianHigh > monthlyDonchianLow
+
+// Historical Data Sufficiency
+maxLookbackRequired = math.max(trendSmaLength, atrLength)
+historicalDataSufficient = bar_index >= (maxLookbackRequired + 50)
+
+// Mathematical Safety (Division by Zero Prevention)
+mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0
+
+// MASTER VALIDATION - NO TRADING WITHOUT THIS (SINGLE LINE)
+isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and monthlyDataValid and historicalDataSufficient and mathSafetyValid
+```
+
+## Input Parameters Standards
+```pinescript
+// Group parameters logically with clear tooltips
+trendSmaLength = input.int(200, "Trend SMA Length", minval=50, maxval=500, group="Trend Filter (F-1)")
+enableFeature = input.bool(true, "Enable Feature", group="Entry Settings", tooltip="Detailed explanation")
+riskPercent = input.float(1.0, "Risk %", minval=0.1, maxval=5.0, step=0.1, group="Risk Management")
+
+// Asset preset system
+assetPreset = input.string("Global Default", "Asset Preset", 
+    options=["Global Default", "Crypto (BTC)", "Indices (NDX/QQQ)", "Metals (Gold)"], 
+    group="Strategy Configuration")
+
+// Asset-specific adjustments
+adjustedRisk = assetPreset == "Crypto (BTC)" ? baseRisk * 0.8 : 
+               assetPreset == "Indices (NDX/QQQ)" ? baseRisk * 1.2 : baseRisk
+```
+
+## Request.Security Best Practices
+```pinescript
+// ✅ Correct - Prevent lookahead bias
+monthlyHigh = request.security(syminfo.tickerid, "1M", 
+              ta.highest(high, 55), lookahead=barmerge.lookahead_off)
+
+// ✅ Always validate request.security results
+monthlyDataValid = not na(monthlyHigh) and monthlyHigh > 0
+
+// ❌ Wrong - Default lookahead can cause bias
+monthlyHigh = request.security(syminfo.tickerid, "1M", ta.highest(high, 55))
+```
+
+## Function Documentation Standards
+```pinescript
+// @function Calculate position size based on ATR risk
+// @param entryPrice Current entry price level
+// @param stopLossPrice Initial stop loss price level  
+// @returns Position size in units/shares with safety validation
+calculateUnitSize(entryPrice, stopLossPrice) =>
+    if na(entryPrice) or na(stopLossPrice) or unitRiskAmountDollars <= 0
+        0.0
+    else
+        riskPerShare = math.abs(entryPrice - stopLossPrice)
+        if riskPerShare <= 0
+            0.0
+        else
+            unitValue = unitRiskAmountDollars / riskPerShare
+            math.floor(math.min(unitValue, strategy.equity * 0.95))
+```
+
+## Error Prevention Patterns
+```pinescript
+// ✅ Prevent division by zero
+positionSize = atr <= 0 ? 0 : (riskCapital / (atr * stopMultiplier))
+
+// ✅ Validate before calculations
+if not na(entryPrice) and entryPrice > 0 and not na(stopPrice) and stopPrice < entryPrice
+    // Execute trade logic
+
+// ✅ Safe array/series access
+recentHigh = bar_index >= 20 ? ta.highest(high, 20) : na
+
+// ✅ Proper variable initialization
+var float trailStop = na
+var bool trailActivated = false
+```
+
+## Trade Execution Patterns
+
+### Entry Logic with Validation
+```pinescript
+if strategy.position_size == 0 and isDataValid
+    float initialStop = na
+    float unitSize = na
+    string entryId = ""
+    
+    if breakoutCondition
+        initialStop := calculateInitialStopLoss(close, "BREAKOUT")
+        if not na(initialStop) and initialStop < close
+            unitSize := calculateUnitSize(close, initialStop)
+            entryId := "Unit 1 Long"
+    
+    if not na(unitSize) and unitSize > 0
+        calculatedRisk = (unitSize * math.abs(close - initialStop)) / strategy.equity * 100
+        if calculatedRisk <= adjustedUnitRiskPercent * 1.1
+            strategy.entry(entryId, strategy.long, qty=unitSize)
+```
+
+### Pyramiding (Turtle Units)
+```pinescript
+if enablePyramiding and strategy.position_size > 0 and currentPyramidCount < maxPyramidEntries
+    entryPrice = strategy.position_avg_price
+    profitInN = atr > 0 ? (close - entryPrice) / atr : 0.0
+    nextUnitThreshold = (currentPyramidCount + 1) * pyramidSpacingATR
+    
+    if profitInN >= nextUnitThreshold and pyramidCondition
+        unitSize = calculateUnitSize(close, unitStopPrice)
+        if unitSize > 0
+            unitId = "Unit " + str.tostring(currentPyramidCount + 2)
+            strategy.entry(unitId, strategy.long, qty=unitSize)
+```
+
+## Logging Standards
+```pinescript
+// ✅ Trade execution logging
+if strategy.position_size > 0 and strategy.position_size[1] == 0
+    log.info("🟢 ENTRY: Price=" + str.tostring(close, "#.##") + 
+             " | Stop=" + str.tostring(initialStop, "#.##") + 
+             " | Risk=" + str.tostring(calculatedRisk, "#.##") + "%")
+
+// ✅ Exit logging with reason
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    log.info("🔴 EXIT: " + exitReason + " | Price=" + str.tostring(close, "#.##") + 
+             " | P&L=" + str.tostring(strategy.netprofit, "#.##"))
+
+// ✅ Risk management alerts
+if wouldExceedMaxRisk
+    log.warning("⚠️ RISK LIMIT: Would exceed " + str.tostring(maxTradeRiskPercent) + "% max risk")
+```
+
+## Visualization Standards
+```pinescript
+// Essential plots only - avoid clutter
+plot(strategy.position_size > 0 ? currentStopPrice : na, 
+     "Stop Loss", color=color.red, linewidth=2)
+
+// Background colors for trade zones
+profitZone = strategy.position_size > 0 and close > strategy.position_avg_price
+bgcolor(profitZone ? color.new(color.green, 95) : na, title="Profit Zone")
+
+// Entry/Exit markers with labels
+entryCondition = strategy.position_size > 0 and strategy.position_size[1] == 0
+plotshape(entryCondition, "Entry", shape.triangleup, location.belowbar, 
+          color.new(color.blue, 30), size=size.small)
+
+// Strategic labels (F-2D, F-3D, etc.)
+if entryCondition and not na(entryLabel)
+    label.new(bar_index, low, entryLabel, style=label.style_label_up, 
+              color=color.new(color.blue, 30), textcolor=color.white)
+
+// ✅ plotshape text argument must be CONST string (not series). Use label.new for dynamic text.
+```
+
+## Performance Optimization
+```pinescript
+// ✅ Calculate once, use multiple times
+sma200 = ta.sma(close, 200)
+isTrendBullish = close > sma200
+isReferenceBullish = referenceClose > ta.sma(referenceClose, 200)
+
+// ✅ Use var for persistent state
+var float currentStopPrice = na
+var int pyramidCount = 0
+
+// ✅ Minimize request.security calls
+monthlyData = request.security(syminfo.tickerid, "1M", [high, low])
+monthlyHigh = monthlyData[0]
+monthlyLow = monthlyData[1]
+
+// ✅ Conditional calculations
+if enableFeature and isDataValid
+    // Only calculate when needed
+```
+
+## Testing Requirements
+
+### Before Every Commit:
+1. **Syntax Check**: Ensure Pine Script v6 compilation success
+2. **Scope Validation**: No global variable modifications in functions
+3. **Data Validation**: All trading functions check for valid data
+4. **Line Continuation**: All multi-line expressions properly formatted
+5. **Memory Management**: Arrays and drawing objects properly managed
+
+### Error Prevention Commands:
+```bash
+# Check for dangerous global variable modifications in functions
+grep -n "var.*:=" *.pine
+
+# Check for potential line continuation issues  
+grep -n "^[ \\t]+.*and$\|^[ \\t]+.*or$" *.pine
+
+# Check for missing data validation
+grep -n "strategy\." *.pine | grep -v "na("
+```
+
+## Common Anti-Patterns to Avoid
+
+### 1. Repainting Prevention
+```pinescript
+// ✅ Use barstate.isconfirmed for final signals
+signal = barstate.isconfirmed and conditionMet
+// ✅ Set lookahead=barmerge.lookahead_off
+```
+
+### 2. Insufficient History
+```pinescript
+// ✅ Check bar_index before using indicators
+isValidSMA = bar_index >= 200 and not na(ta.sma(close, 200))
+```
+
+### 3. NA Value Handling
+```pinescript
+// ✅ Always validate before calculations
+if not na(atr) and atr > 0 and not na(close) and close > 0
+    calculation = close / atr
+```
+
+### 4. Position Sizing Safety
+```pinescript
+// ✅ Multiple validation layers
+unitSize = calculateUnitSize(entryPrice, stopPrice)
+if unitSize > 0 and unitSize <= maxPositionSize
+    strategy.entry("Long", strategy.long, qty=unitSize)
+```

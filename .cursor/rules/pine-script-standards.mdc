@@ -135,3 +135,215 @@ All code must support these [core strategy components](mdc:.cursor/rules/prd.mdc
 - **R-1**: ATR-based position sizing
 - **R-2**: Hard stop loss enforcement
 - **UI-1**: Clear on-chart signal visualization
+
+## Pine Script Error Log & Solutions
+
+### Compilation Errors
+
+#### Plot Function Parameter Conflicts
+**Error**: `Two or more arguments are passed to the "title" parameter. You can pass only one argument.`
+
+**Problem**: Using both positional and named title parameter in plot() function
+```pinescript
+// ❌ Bad - Causes parameter conflict
+plot(strategy.position_size > 0 ? currentStopPrice : na, "Stop Loss", color=color.red, linewidth=2, title="Stop Loss")
+```
+
+**Solution**: Remove duplicate title parameter - use either positional OR named
+```pinescript
+// ✅ Good - Single title parameter (positional)
+plot(strategy.position_size > 0 ? currentStopPrice : na, "Stop Loss", color=color.red, linewidth=2)
+
+// ✅ Good - Single title parameter (named)
+plot(strategy.position_size > 0 ? currentStopPrice : na, color=color.red, linewidth=2, title="Stop Loss")
+```
+
+#### plotshape Text Parameter Issues
+**Error**: `plotshape` with `text=entryCode` expected const string but got series string
+
+**Problem**: Using dynamic series string for text parameter
+```pinescript
+// ❌ Bad - Dynamic text not allowed
+plotshape(entryCondition, "Entry", shape.triangleup, location.belowbar, color.blue, text=entryCode)
+```
+
+**Solution**: Remove text parameter or use const string
+```pinescript
+// ✅ Good - No text parameter
+plotshape(entryCondition, "Entry", shape.triangleup, location.belowbar, color.blue, size=size.tiny)
+
+// ✅ Good - Const string only
+plotshape(entryCondition, "Entry", shape.triangleup, location.belowbar, color.blue, text="ENTRY")
+```
+
+#### Table Cell Parameter Issues
+**Error**: `table.cell` parameter not supported
+
+**Problem**: Using unsupported parameters like `colspan`
+```pinescript
+// ❌ Bad - colspan not supported
+table.cell(systemTable, 0, 0, "JON SYSTEM", colspan=2)
+```
+
+**Solution**: Use separate cells instead of colspan
+```pinescript
+// ✅ Good - Use separate header cells
+table.cell(systemTable, 0, 0, "JON SYSTEM", text_color=color.white)
+table.cell(systemTable, 1, 0, "", text_color=color.white)
+```
+
+#### Variable Scope Issues
+**Error**: Undefined variable or function call in conditional scope
+
+**Problem**: Defining variables or calling functions inside conditionals that are used globally
+```pinescript
+// ❌ Bad - Variable defined in conditional scope
+if enableSomeFeature
+    smaValue = ta.sma(close, 200)
+plot(smaValue) // Error: smaValue may be undefined
+```
+
+**Solution**: Define variables at global scope, calculate conditionally
+```pinescript
+// ✅ Good - Variable defined globally
+smaValue = enableSomeFeature ? ta.sma(close, 200) : na
+plot(smaValue)
+```
+
+#### Variable Declaration Order
+**Error**: "Undeclared identifier" when variables are used before declaration
+
+**Problem**: Variables referenced in validation or calculations before they're declared
+```pinescript
+// ❌ Bad - monthlyDonchianHigh used before declaration
+isDataValid = not na(monthlyDonchianHigh) and monthlyDonchianHigh > 0
+// ... later in code ...
+monthlyDonchianHigh = request.security(syminfo.tickerid, "1M", ta.highest(high, 55))
+```
+
+**Solution**: Declare variables before any usage
+```pinescript
+// ✅ Good - Declare before use
+monthlyDonchianHigh = request.security(syminfo.tickerid, "1M", ta.highest(high, 55))
+// ... later in code ...
+isDataValid = not na(monthlyDonchianHigh) and monthlyDonchianHigh > 0
+```
+
+#### Local Scope Function Restrictions
+**Error**: "Cannot use plotshape in local scope"
+
+**Problem**: Using plot functions inside conditional blocks or function scope
+```pinescript
+// ❌ Bad - plotshape in local scope
+if exitCondition
+    plotshape(true, "Exit", shape.triangledown, location.abovebar, color.orange)
+```
+
+**Solution**: Move plot functions to global scope with condition variables
+```pinescript
+// ✅ Good - plotshape at global scope
+exitCondition = showTradeLabels and strategy.position_size == 0 and strategy.position_size[1] > 0
+plotshape(exitCondition, "Exit", shape.triangledown, location.abovebar, color.orange)
+```
+
+#### Long Line Indentation Errors
+**Error**: Syntax errors on indented long lines
+
+**Problem**: Multi-line statements with indentation cause Pine Script compilation failure
+```pinescript
+// ❌ Bad - Indented continuation lines fail
+if condition
+    log.info("Long message: " + var1 + 
+            " | More: " + var2)  // This fails!
+```
+
+**Solution**: Long lines must start at column 0, no indentation allowed
+```pinescript
+// ✅ Good - No indentation on long lines
+if condition
+log.info("Long message: " + var1 + " | More: " + var2)  // Starts at column 0
+```
+
+#### Line Continuation Errors
+**Error**: Syntax error in multi-line expressions
+
+**Problem**: Missing backslash (`\`) for line continuation in complex expressions
+```pinescript
+// ❌ Bad - Missing line continuation
+longCondition = isTrendBullish and 
+                isSignalValid and
+                riskAcceptable
+```
+
+**Solution**: Add backslash at end of each line (except last)
+```pinescript
+// ✅ Good - Proper line continuation
+longCondition = isTrendBullish and \
+                isSignalValid and \
+                riskAcceptable
+```
+
+### UI/Display Errors
+
+#### Label Text Conflicts
+**Error**: Label text parameter issues with dynamic content
+
+**Problem**: Labels with dynamic text content causing compilation issues
+```pinescript
+// ❌ Potential issue - Complex dynamic text
+dynamicText = "Entry: " + str.tostring(close) + " Stop: " + str.tostring(stopPrice)
+label.new(bar_index, high, dynamicText)
+```
+
+**Solution**: Simplify text or use coded labels
+```pinescript
+// ✅ Good - Simple coded text
+exitCode = exitReason == "STOP LOSS" ? "T1-SL" : "T1-F4"
+label.new(bar_index, high, exitCode, style=label.style_label_down)
+```
+
+#### Background Color Conflicts
+**Error**: Multiple bgcolor() calls causing overlap
+
+**Problem**: Multiple background colors applied simultaneously
+```pinescript
+// ❌ Potential issue - Color conflicts
+bgcolor(profitZone ? color.green : na)
+bgcolor(riskZone ? color.red : na)
+bgcolor(neutralZone ? color.gray : na)
+```
+
+**Solution**: Use conditional logic to prioritize colors
+```pinescript
+// ✅ Good - Single bgcolor with priority logic
+zoneColor = profitZone ? color.new(color.green, 95) : 
+            riskZone ? color.new(color.red, 95) : 
+            neutralZone ? color.new(color.gray, 98) : na
+bgcolor(zoneColor)
+```
+
+### Best Practices to Prevent Errors
+
+1. **Always use global scope for variables used in plots**
+2. **Avoid parameter duplication in functions**
+3. **Use proper line continuation with backslashes**
+4. **Test UI elements incrementally**
+5. **Keep text parameters simple and static when possible**
+6. **Use consistent naming conventions**
+7. **Validate all external data before use**
+8. **Comment complex conditional logic clearly**
+
+### Error Prevention Checklist
+
+- [ ] All plot functions have unique parameter names
+- [ ] Variables used in plots are defined at global scope
+- [ ] Variables are declared before any usage/reference
+- [ ] Plot functions (plotshape, plot, etc.) are at global scope only
+- [ ] Long lines start at column 0 (no indentation on continuation lines)
+- [ ] Line continuations use proper backslash syntax
+- [ ] Table parameters are supported in Pine Script v6
+- [ ] Label text is simplified and coded
+- [ ] Background colors have proper priority logic
+- [ ] All external data is validated before use
+- [ ] Function parameters match documentation exactly
+- [ ] Global variables use `var` declaration when state persistence is needed

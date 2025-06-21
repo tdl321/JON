@@ -13,8 +13,77 @@ This task breakdown implements the **"robustness over optimization"** philosophy
 
 ## Phase-Based Implementation Strategy
 
+### 🔧 **Phase 0: Foundation Debugging & Parameter Validation**
+**Goal**: Establish parameter-driven development framework and fix critical implementation bugs
+**Status**: CURRENT ACTIVE PHASE
+
+#### **Mission Context**:
+Create a separation of concerns between **parameter experimentation** (TradingView Settings UI) and **implementation execution** (Pine Script code). This enables rapid strategy optimization through UI controls without ever needing to edit code again.
+
+#### **Parameter-Driven Development Framework**:
+- **🎛️ Experimentation Layer**: TradingView settings interface for parameter testing
+- **⚙️ Implementation Layer**: Bug-free Pine Script execution engine
+- **📋 Validation Layer**: Systematic parameter reference and debugging protocols
+
+#### Tasks:
+- **0.1 Documentation Framework**: 
+  - ✅ Parameter reference system ([jon-parameters.mdc](mdc:.cursor/rules/jon-parameters.mdc))
+  - ✅ Debugging protocol ([jon-debugging.mdc](mdc:.cursor/rules/jon-debugging.mdc))
+  - ✅ Issue tracking and validation processes
+
+- **0.2 Critical Bug Fixes**: Fix implementation issues without touching parameters
+  - **Issue #1**: Missing `if trailStartActivated` block in exit strategy (CRITICAL)
+  - **Issue #2**: Table UI display errors and na value handling
+  - **Issue #3**: Missed trade signals in entry detection logic
+  - **Issue #4**: Variable scope problems with var declarations
+  - **Issue #5**: Monthly data request issues with lookahead bias
+
+- **0.3 Parameter Compliance Validation**: Ensure implementation matches parameter intent
+  - F-4 Exit Strategy: Trailing must respect `trailStartProfitMultiplier = 5.0`
+  - F-2/F-3 Entry Logic: Monthly timeframes and age requirements must be exact
+  - R-1/R-2 Risk Management: All correlation features must function per boolean settings
+  - UI Settings: All parameters must be properly referenced, no hardcoded values
+
+#### **Validation Checkpoint**:
+- [ ] All critical bugs fixed and implementation respects parameter specifications
+- [ ] Pine Script compiles without errors in TradingView
+- [ ] UI displays correctly with proper na value handling
+- [ ] Debug mode reveals correct signal detection logic
+- [ ] Entry/exit timing matches parameter-defined criteria
+- [ ] All parameter variables are properly referenced (zero hardcoded values)
+- [ ] Implementation ready for future TradingView settings UI integration
+
+#### **Parameter Reference Validation Process**:
+Every fix must validate against [jon-parameters.mdc](mdc:.cursor/rules/jon-parameters.mdc):
+1. **Reference Parameter Intent**: What should this parameter do?
+2. **Validate Implementation**: Does the code honor the parameter specification?
+3. **Cross-Check Constraints**: Are ranges, types, and defaults respected?
+4. **Document Validation**: Log the parameter compliance in debugging notes
+
+#### **Future Settings UI Benefits** (Implementation Goal):
+Once Phase 0 is complete, users will be able to optimize strategy through TradingView settings:
+- 🎛️ **Risk per unit adjustments** (0.1% - 2.0% range)
+- 🔘 **Toggle correlation features** (boolean checkboxes)
+- 📊 **Fine-tune ATR multipliers** (0.5 - 10.0 range with 0.1 steps)
+- ⏱️ **Modify timeframes and age requirements** within validated ranges
+- 🎯 **Enable/disable entry methods** without code changes
+
+#### **Success Criteria for Phase 0**:
+- ✅ **Zero Implementation Bugs**: All execution logic works flawlessly
+- ✅ **Parameter Compliance**: Every calculation uses parameter variables correctly
+- ✅ **Future-Ready Structure**: TradingView settings integration ready
+- ✅ **Professional Separation**: Parameter research vs execution infrastructure
+
+#### References:
+- Parameter Specs: [JON Master Parameter Reference](mdc:.cursor/rules/jon-parameters.mdc)
+- Debug Protocol: [JON Debugging & Error Tracking](mdc:.cursor/rules/jon-debugging.mdc)
+- Standards: [Pine Script Standards](mdc:.cursor/rules/pine-script-standards.mdc)
+
+---
+
 ### 🏗️ **Phase 1: Foundation Infrastructure**
 **Goal**: Establish robust Pine Script foundation before any trading logic
+**Dependencies**: Phase 0 complete
 
 #### Tasks:
 - **1.1 Project Setup**: Pine Script v5 strategy template with proper headers
@@ -157,3 +226,110 @@ Each completed phase should move closer to the [PRD's core philosophy](mdc:.curs
 - **Robustness over Optimization**: Works across multiple assets and market conditions
 - **Sidestep Bear Markets**: Preserves capital during major downturns
 - **Low-Frequency Investing**: High-quality signals, not overtrading
+
+# JON Trading Strategy - Current Implementation Status
+
+## 📋 **ACTIVE PHASE: Phase 0.3 - Donchian Channel Integration**
+
+### **Current Task: Replace Manual High/Low Analysis with Turtle Donchian Channels**
+
+**Status**: ✅ Parameters Added, 🔄 Implementation In Progress  
+**Objective**: Enhance the Top-Down dual-system architecture with proven Turtle Donchian channel methodology for cleaner breakout/recovery detection
+
+---
+
+## 🎯 **Phase 0.3 Implementation Details**
+
+### **✅ COMPLETED:**
+1. **Top-Down Infrastructure Built**:
+   - Monthly Context Layer (Strategic): Trend bias, key level validation
+   - Daily Execution Layer (Tactical): Clean breakout/recovery signals
+   - Priority hierarchy: VOL@MTH > DAY+MTH > MTH_ONLY > DAY_ONLY
+
+2. **Donchian Parameters Added**:
+   - `monthlyDonchianPeriod` (55) - Classic Turtle long-term channel
+   - `dailyDonchianPeriod` (20) - Classic Turtle short-term channel  
+   - `requireCleanBreakout` (true) - Must close outside channel
+   - `breakoutConfirmationBars` (2) - Bars outside for confirmation
+   - Equivalent dip buy parameters for recovery detection
+
+### **🔄 IN PROGRESS:**
+**Replace Current Signal Detection Logic with Donchian Channels**
+
+#### **A. Monthly Context Layer Enhancement:**
+```pinescript
+// Replace manual monthly high/low tracking with:
+monthlyDonchianUpper = request.security(syminfo.tickerid, breakoutTimeframe, ta.highest(high, monthlyDonchianPeriod))
+monthlyDonchianLower = request.security(syminfo.tickerid, dipBuyTimeframe, ta.lowest(low, monthlyDipDonchianPeriod))
+```
+
+#### **B. Daily Execution Layer Enhancement:**
+```pinescript
+// Replace ta.highest/ta.lowest with:
+dailyDonchianUpper = ta.highest(high, dailyDonchianPeriod)
+dailyDonchianLower = ta.lowest(low, dailyDipDonchianPeriod)
+```
+
+#### **C. Enhanced Signal Logic:**
+1. **Breakout Detection**: 
+   - Clean channel breakout (close above upper channel)
+   - Confirmation bars requirement
+   - Volume spike enhancement at channel breaks
+
+2. **Dip Recovery Detection**:
+   - Touch lower channel + clean recovery (close above lower channel)
+   - Recovery confirmation bars
+   - Monthly context alignment
+
+#### **D. Top-Down Integration:**
+- **Priority 1**: Volume spike + Donchian breakout at monthly level
+- **Priority 2**: Daily Donchian signal + Monthly Donchian context
+- **Priority 3**: Monthly Donchian signal only
+- **Priority 4**: Daily Donchian signal with strong momentum
+
+---
+
+## 🔧 **Implementation Requirements**
+
+### **Signal Detection Replacement:**
+1. **Remove**: Manual age tracking, manual high/low calculations
+2. **Replace**: With Donchian channel breakout/recovery logic
+3. **Enhance**: Volume spike validation at channel levels
+4. **Maintain**: All existing parameter validation and Top-Down hierarchy
+
+### **Key Benefits Expected:**
+- **Cleaner signals**: Automatic false breakout filtering
+- **Proven methodology**: Classic Turtle robustness
+- **Reduced complexity**: No manual age/level tracking
+- **Enhanced filtering**: Channel + volume + monthly context
+
+### **Testing Framework:**
+- All parameters remain flexible for optimization
+- Side-by-side comparison with previous logic possible
+- Debug indicators updated for Donchian levels
+- UI table enhanced with channel status
+
+---
+
+## 📊 **Current File Status**
+
+**jon_strategy.pine**: 
+- ✅ Top-Down infrastructure complete
+- ✅ Donchian parameters added  
+- 🔄 Signal detection logic needs Donchian implementation
+- 🔄 Debug indicators need channel level plots
+- 🔄 UI table needs channel status updates
+
+**Estimated Implementation**: ~1-2 hours for complete Donchian integration
+
+---
+
+## 🎯 **Next Context Window Goals**
+
+1. **Implement Donchian calculations** for both monthly and daily timeframes
+2. **Replace signal detection logic** with channel-based methodology  
+3. **Update debug indicators** to show Donchian levels
+4. **Enhance UI table** with channel breakout status
+5. **Test and validate** signal improvements
+
+**Philosophy**: Maintain parameter flexibility while implementing proven Turtle methodology for maximum robustness across timeframes and assets.

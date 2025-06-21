@@ -47,8 +47,8 @@ strategy("JON - MTP Universal HTF Trend Following",
 enableFuturesMode = input.bool(true, "Enable Futures Position Sizing", group = "Robustness (R-0)", tooltip = "Use contract point value for proper futures risk calculation")
 
 // --- F-1: TREND FILTER SETTINGS ---
-trendFilterEnabled = input.bool(true, "Enable 200 SMA Trend Filter", group = "Trend Filter (F-1)")
-trendSmaLength = input.int(200, "Trend SMA Length", minval = 50, maxval = 500, group = "Trend Filter (F-1)")
+trendFilterEnabled = input.bool(true, "Enable 200 EMA Trend Filter", group = "Trend Filter (F-1)")
+trendEmaLength = input.int(200, "Trend EMA Length", minval = 50, maxval = 500, group = "Trend Filter (F-1)")
 useReferenceAsset = input.bool(true, "Use Reference Asset Filter", group = "Trend Filter (F-1)")
 referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", group = "Trend Filter (F-1)")
 
@@ -93,7 +93,7 @@ pyramidSpacingATR = input.float(1.0, "Unit Spacing (ATR multiplier)", minval = 0
 trailSLOnPyramiding = input.bool(true, "Trail SL on Unit Additions", group = "Pyramiding Engine (R-4)")
 
 // --- UI: DISPLAY SETTINGS ---
-showTrendSma = input.bool(true, "Show 200 SMA", group = "Display Settings")
+showTrendEma = input.bool(true, "Show 200 EMA", group = "Display Settings")
 showStopLevels = input.bool(true, "Show Stop Loss Levels", group = "Display Settings")
 showEntryArrows = input.bool(true, "Show Entry Arrows", group = "Display Settings")
 showExitArrows = input.bool(true, "Show Exit Arrows", group = "Display Settings")
@@ -110,15 +110,15 @@ showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings")
 
 // Basic indicators with EXTENDED ATR period (KEY DIFFERENCE) - using native chart data
 atr = ta.atr(atrLength)  // 100-period ATR for stability
-trendSma = ta.sma(close, trendSmaLength)
+trendEma = ta.ema(close, trendEmaLength)
 
 // Reference asset data for correlation (KEY FEATURE) - using chart timeframe
 referenceClose = useReferenceAsset ? request.security(referenceSymbol, timeframe.period, close, lookahead=barmerge.lookahead_off) : na
-referenceSma = useReferenceAsset and not na(referenceClose) ? request.security(referenceSymbol, timeframe.period, ta.sma(close, trendSmaLength), lookahead=barmerge.lookahead_off) : na
+referenceEma = useReferenceAsset and not na(referenceClose) ? request.security(referenceSymbol, timeframe.period, ta.ema(close, trendEmaLength), lookahead=barmerge.lookahead_off) : na
 
 // Trend filter with reference asset correlation - using native chart data
-isTrendBullish = not trendFilterEnabled or close > trendSma
-isReferenceBullish = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and referenceClose > referenceSma)
+isTrendBullish = not trendFilterEnabled or close > trendEma
+isReferenceBullish = not useReferenceAsset or (not na(referenceClose) and not na(referenceEma) and referenceClose > referenceEma)
 isTrendFilterPassed = isTrendBullish and isReferenceBullish
 
 // Higher timeframe data (UNIVERSAL HTF SYSTEM) - configurable timeframe logic
@@ -131,14 +131,14 @@ contractTickSize = enableFuturesMode ? syminfo.mintick : 0.01
 contractDataValid = enableFuturesMode ? (contractPointValue > 0 and contractTickSize > 0) : true
 
 // Historical data sufficiency check (timeframe-aware)
-maxLookbackRequired = math.max(trendSmaLength, atrLength, volatilityLookback)
+maxLookbackRequired = math.max(trendEmaLength, atrLength, volatilityLookback)
 historicalDataSufficient = bar_index >= maxLookbackRequired
 
 // ROBUSTNESS FIX #3: Enhanced data validation (CRITICAL per pinescriptrules.txt)
 basicDataValid = not na(close) and not na(high) and not na(low) and close > 0 and high > 0 and low > 0 and high >= low and high >= close and low <= close
 atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
-trendDataValid = not na(trendSma) and trendSma > 0 and bar_index >= trendSmaLength
-referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceSma) and referenceClose > 0)
+trendDataValid = not na(trendEma) and trendEma > 0 and bar_index >= trendEmaLength
+referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceEma) and referenceClose > 0)
 htfDataValid = not na(htfHigh) and not na(htfLow) and htfHigh > 0 and htfLow > 0 and htfHigh > htfLow
 mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0
 isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and htfDataValid and historicalDataSufficient and contractDataValid and mathSafetyValid
@@ -510,7 +510,7 @@ BRIGHT_BLUE = color.new(#0080FF, 0)
 BRIGHT_ORANGE = color.new(#FF8000, 0)
 PROFESSIONAL_BLUE = color.new(color.blue, 20)
 SUBTLE_GREEN = color.new(color.green, 97)// Essential plots
-plot(showTrendSma ? trendSma : na, "200 SMA", color=PROFESSIONAL_BLUE, linewidth=1)
+plot(showTrendEma ? trendEma : na, "200 EMA", color=PROFESSIONAL_BLUE, linewidth=1)
 
 // Entry/Exit detection patterns
 entryDetected = strategy.position_size > 0 and strategy.position_size[1] == 0
