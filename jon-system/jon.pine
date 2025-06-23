@@ -51,7 +51,7 @@ strategy("JON",
 trendFilterEnabled = input.bool(true, "Enable 100 EMA Trend Filter", group = "Trend Filter (F-1)")
 trendEmaLength = input.int(100, "Trend EMA Length", minval = 50, maxval = 500, group = "Trend Filter (F-1)")
 trendAtrBuffer = input.float(1.5, "Trend ATR Buffer", minval = 0.0, maxval = 3.0, step = 0.1, group = "Trend Filter (F-1)", tooltip = "Allow entries when price is within X ATR below EMA (0 = strict, 0.5 = moderate, 1.5 = aggressive)")
-useReferenceAsset = input.bool(true, "Use Reference Asset Filter", group = "Trend Filter (F-1)")
+useReferenceAsset = input.bool(false, "Use Reference Asset Filter", group = "Trend Filter (F-1)")
 referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", group = "Trend Filter (F-1)")
 
 // --- F-2: BREAKOUT ENTRY SETTINGS (Simplified System) ---
@@ -79,7 +79,7 @@ enableDynamicTrail = input.bool(true, "Enable Dynamic Trail Adjustment", group =
 volatilityLookback = input.int(14, "Volatility Reference Period", minval = 10, maxval = 50, group = "Exit Strategy (F-4)")
 
 // --- R-1 & R-2: RISK MANAGEMENT SETTINGS ---
-unitRiskPercent = input.float(1.0, "Risk Per Unit %", minval = 0.1, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+unitRiskPercent = input.float(2.0, "Risk Per Unit %", minval = 0.1, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 maxTradeRiskPercent = input.float(25.0, "Max Total Trade Risk %", minval = 1.0, maxval = 50.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 atrLength = input.int(50, "ATR Length", minval = 5, maxval = 100, group = "Risk Management (R-1, R-2)")
 stopLossMultiplier = input.float(5.0, "Initial Stop Loss x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
@@ -89,7 +89,7 @@ correlateUnit1TrailSL = input.bool(true, "Correlate Unit 1 Trail SL", group = "R
 
 // --- R-4: PYRAMIDING ENGINE SETTINGS ---
 enablePyramiding = input.bool(true, "Enable Unit Pyramiding", group = "Pyramiding Engine (R-4)")
-maxPyramidEntries = input.int(3, "Max Additional Units (Total: 4)", minval = 1, maxval = 4, group = "Pyramiding Engine (R-4)")
+maxPyramidEntries = input.int(4, "Max Additional Units (Total: 5)", minval = 1, maxval = 4, group = "Pyramiding Engine (R-4)")
 pyramidSpacingATR = input.float(1.0, "Unit Spacing (ATR multiplier)", minval = 0.5, maxval = 2.0, step = 0.5, group = "Pyramiding Engine (R-4)")
 trailSLOnPyramiding = input.bool(true, "Trail SL on Unit Additions", group = "Pyramiding Engine (R-4)")
 
@@ -99,8 +99,8 @@ showStopLevels = input.bool(true, "Show Stop Loss Levels", group = "Display Sett
 showEntryArrows = input.bool(true, "Show Entry Arrows", group = "Display Settings")
 showExitArrows = input.bool(true, "Show Exit Arrows", group = "Display Settings")
 arrowSize = "Small"
-showProfitZone = input.bool(true, "Show Profit Zone", group = "Display Settings")
-showRiskZone = input.bool(true, "Show Risk Zone", group = "Display Settings")
+showProfitZone = input.bool(false, "Show Profit Zone", group = "Display Settings")
+showRiskZone = input.bool(false, "Show Risk Zone", group = "Display Settings")
 showStopLossLine = input.bool(true, "Show Stop Loss Line", group = "Display Settings")
 // showStopLossLine input removed - static stop-loss line deprecated
 showHistoricalZones = input.bool(true, "Show Historical Zones", group = "Display Settings")
