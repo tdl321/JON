@@ -54,32 +54,34 @@ trendAtrBuffer = input.float(1.5, "Trend ATR Buffer", minval = 0.0, maxval = 3.0
 useReferenceAsset = input.bool(false, "Use Reference Asset Filter", group = "Trend Filter (F-1)")
 referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", group = "Trend Filter (F-1)")
 
-// --- F-2: BREAKOUT ENTRY SETTINGS (Simplified System) ---
+// --- F-2: BREAKOUT ENTRY SETTINGS (Monthly HTF System) ---
 enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakout Entry (F-2)")
-breakoutLookback = input.int(50, "Breakout Lookback Period", minval = 10, maxval = 200, group = "Breakout Entry (F-2)", tooltip = "Look for highs over this many bars back")
-breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1, maxval = 60, group = "Breakout Entry (F-2)", tooltip = "Must cross above high within this many days")
-breakoutMinAgeDays = input.int(20, "Min Age of Crossed High (days)", minval = 1, maxval = 100, group = "Breakout Entry (F-2)", tooltip = "High must be at least this many days old")
-breakoutMaxAgeDays = input.int(200, "Max Age of Crossed High (days)", minval = 5, maxval = 500, group = "Breakout Entry (F-2)", tooltip = "High must not be older than this many days")
+breakoutTimeframe = input.timeframe("1M", "Monthly Timeframe for Breakouts", group = "Breakout Entry (F-2)", tooltip = "Monthly timeframe for major breakout detection")
+breakoutLookbackPeriod = input.int(1, "Monthly Lookback Period", minval = 1, maxval = 60, group = "Breakout Entry (F-2)", tooltip = "Months to look back for significant highs (1 = 1 month)")
+breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1, maxval = 60, group = "Breakout Entry (F-2)", tooltip = "Must cross above monthly high within this many days")
+breakoutMinAgeDays = input.int(20, "Min Age of Monthly High (days)", minval = 7, maxval = 180, group = "Breakout Entry (F-2)", tooltip = "Monthly high must be at least this many days old (20 days)")
+breakoutMaxAgeDays = input.int(200, "Max Age of Monthly High (days)", minval = 30, maxval = 1095, group = "Breakout Entry (F-2)", tooltip = "Monthly high must not be older than this many days (200 days)")
 
-// --- F-3: DIP BUY ENTRY SETTINGS (Simplified System) ---
+// --- F-3: DIP BUY ENTRY SETTINGS (Monthly HTF System) ---
 enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy Entry (F-3)")
-dipLookback = input.int(50, "Dip Lookback Period", minval = 10, maxval = 200, group = "Dip Buy Entry (F-3)", tooltip = "Look for lows over this many bars back")
-dipRecoveryWithinDays = input.int(30, "Recovery Within (days)", minval = 1, maxval = 90, group = "Dip Buy Entry (F-3)", tooltip = "Must recover from low within this many days")
-dipMinAgeDays = input.int(15, "Min Age of Crossed Low (days)", minval = 1, maxval = 100, group = "Dip Buy Entry (F-3)", tooltip = "Low must be at least this many days old")
-dipMaxAgeDays = input.int(90, "Max Age of Crossed Low (days)", minval = 5, maxval = 200, group = "Dip Buy Entry (F-3)", tooltip = "Low must not be older than this many days")
-dipTouchBuffer = input.float(0.5, "Dip Touch Buffer %", minval = 0.1, maxval = 1.0, step = 0.1, group = "Dip Buy Entry (F-3)")
-dipRecoveryBufferATR = input.float(0.1, "Recovery Buffer (ATR multiplier)", minval = 0.05, maxval = 0.5, step = 0.05, group = "Dip Buy Entry (F-3)", tooltip = "Must recover this many ATR above swing low to trigger entry")
+dipTimeframe = input.timeframe("1M", "Monthly Timeframe for Dip Buys", group = "Dip Buy Entry (F-3)", tooltip = "Monthly timeframe for major dip detection")
+dipLookbackPeriod = input.int(1, "Monthly Lookback Period", minval = 1, maxval = 60, group = "Dip Buy Entry (F-3)", tooltip = "Months to look back for significant lows (1 = 1 month)")
+dipRecoveryWithinDays = input.int(30, "Recovery Within (days)", minval = 7, maxval = 180, group = "Dip Buy Entry (F-3)", tooltip = "Must recover from monthly low within this many days")
+dipMinAgeDays = input.int(15, "Min Age of Monthly Low (days)", minval = 7, maxval = 180, group = "Dip Buy Entry (F-3)", tooltip = "Monthly low must be at least this many days old (15 days)")
+dipMaxAgeDays = input.int(90, "Max Age of Monthly Low (days)", minval = 21, maxval = 730, group = "Dip Buy Entry (F-3)", tooltip = "Monthly low must not be older than this many days (90 days)")
+dipTouchBufferATR = input.float(0.1, "Dip Touch Buffer (ATR multiplier)", minval = 0.05, maxval = 0.5, step = 0.05, group = "Dip Buy Entry (F-3)", tooltip = "Allow touching monthly low within this many ATR below the exact low")
+dipRecoveryBufferATR = input.float(0.2, "Recovery Buffer (ATR multiplier)", minval = 0.1, maxval = 1.0, step = 0.1, group = "Dip Buy Entry (F-3)", tooltip = "Must recover this many ATR above monthly low to trigger entry")
 
 // --- F-4: EXIT STRATEGY SETTINGS (HIGH PERFORMANCE) ---
 exitMode = input.string("ATR Trail", "Exit Strategy Mode", options = ["ATR Trail"], group = "Exit Strategy (F-4)")
-atrTrailMultiplier = input.float(8.0, "Trailing Distance x ATR", minval = 0.5, maxval = 25.0, step = 0.5, group = "Exit Strategy (F-4)")
+atrTrailMultiplier = input.float(10.0, "Trailing Distance x ATR", minval = 0.5, maxval = 25.0, step = 0.5, group = "Exit Strategy (F-4)")
 trailStartProfitMultiplier = input.float(5.0, "Trailing Start at Profit x ATR", minval = 1.0, maxval = 20.0, step = 0.1, group = "Exit Strategy (F-4)")
 trailOnTouchHigh = input.bool(true, "Trail Start on Touch High", group = "Exit Strategy (F-4)")
 enableDynamicTrail = input.bool(true, "Enable Dynamic Trail Adjustment", group = "Exit Strategy (F-4)")
 volatilityLookback = input.int(14, "Volatility Reference Period", minval = 10, maxval = 50, group = "Exit Strategy (F-4)")
 
 // --- R-1 & R-2: RISK MANAGEMENT SETTINGS ---
-unitRiskPercent = input.float(2.0, "Risk Per Unit %", minval = 0.1, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
+unitRiskPercent = input.float(5.0, "Risk Per Unit %", minval = 0.1, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 maxTradeRiskPercent = input.float(25.0, "Max Total Trade Risk %", minval = 1.0, maxval = 50.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 atrLength = input.int(50, "ATR Length", minval = 5, maxval = 100, group = "Risk Management (R-1, R-2)")
 stopLossMultiplier = input.float(5.0, "Initial Stop Loss x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
@@ -112,7 +114,7 @@ showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings")
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // Basic indicators with EXTENDED ATR period (KEY DIFFERENCE) - using native chart data
-atr = ta.atr(atrLength)  // 100-period ATR for stability
+atr = ta.atr(atrLength)  // 50-period ATR for stability
 trendEma = ta.ema(close, trendEmaLength)
 
 // Reference asset data for correlation (KEY FEATURE) - using chart timeframe
@@ -125,29 +127,28 @@ isTrendBullish = not trendFilterEnabled or close > trendFilterLevel
 isReferenceBullish = not useReferenceAsset or (not na(referenceClose) and not na(referenceEma) and referenceClose > referenceEma)
 isTrendFilterPassed = isTrendBullish and isReferenceBullish
 
-// Swing pivot detection - find significant highs and lows that have been validated
-pivotLookback = 10  // Look for pivots with 10 bars on each side
-pivotHigh = ta.pivothigh(high, pivotLookback, pivotLookback)
-pivotLow = ta.pivotlow(low, pivotLookback, pivotLookback)
+// TRUE HTF DATA - Real higher timeframe breakout and dip levels
+htfBreakoutHigh = request.security(syminfo.tickerid, breakoutTimeframe, ta.highest(high, breakoutLookbackPeriod), lookahead=barmerge.lookahead_off)
+htfDipLow = request.security(syminfo.tickerid, dipTimeframe, ta.lowest(low, dipLookbackPeriod), lookahead=barmerge.lookahead_off)
 
-// Track the most recent significant swing high/low
-var float significantHigh = na
-var float significantLow = na
-var int significantHighTime = na
-var int significantLowTime = na
+// HTF time tracking for age validation (using HTF bar index for proper timing)
+htfBreakoutTime = request.security(syminfo.tickerid, breakoutTimeframe, time, lookahead=barmerge.lookahead_off)
+htfDipTime = request.security(syminfo.tickerid, dipTimeframe, time, lookahead=barmerge.lookahead_off)
 
-// Update significant levels when new pivots are found
-if not na(pivotHigh)
-    significantHigh := pivotHigh
-    significantHighTime := time[pivotLookback]  // Time when the pivot was actually formed
+// Track HTF level changes for age validation
+var float lastHTFHigh = na
+var float lastHTFLow = na
+var int htfHighChangeTime = na
+var int htfLowChangeTime = na
 
-if not na(pivotLow)
-    significantLow := pivotLow
-    significantLowTime := time[pivotLookback]  // Time when the pivot was actually formed
+// Detect when HTF levels change (new highs/lows formed)
+if not na(htfBreakoutHigh) and (na(lastHTFHigh) or htfBreakoutHigh != lastHTFHigh)
+    lastHTFHigh := htfBreakoutHigh
+    htfHighChangeTime := time
 
-// Use significant levels as HTF levels
-htfHigh = significantHigh
-htfLow = significantLow
+if not na(htfDipLow) and (na(lastHTFLow) or htfDipLow != lastHTFLow)
+    lastHTFLow := htfDipLow
+    htfLowChangeTime := time
 
 // Data validation constants
 contractDataValid = true
@@ -156,12 +157,18 @@ contractDataValid = true
 maxLookbackRequired = math.max(trendEmaLength, atrLength, volatilityLookback)
 historicalDataSufficient = bar_index >= maxLookbackRequired
 
-// ROBUSTNESS FIX #3: Enhanced data validation (CRITICAL per pinescriptrules.txt)
+// ROBUSTNESS FIX #3: Enhanced data validation with TRUE HTF validation
 basicDataValid = not na(close) and not na(high) and not na(low) and close > 0 and high > 0 and low > 0 and high >= low and high >= close and low <= close
 atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
 trendDataValid = not na(trendEma) and trendEma > 0 and bar_index >= trendEmaLength
 referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceEma) and referenceClose > 0)
-htfDataValid = not na(htfHigh) and not na(htfLow) and htfHigh > 0 and htfLow > 0 and htfHigh > htfLow
+
+// HTF data validation - all HTF components must be valid
+htfBreakoutDataValid = not na(htfBreakoutHigh) and htfBreakoutHigh > 0 and not na(htfBreakoutTime)
+htfDipDataValid = not na(htfDipLow) and htfDipLow > 0 and not na(htfDipTime)
+htfTimingDataValid = not na(htfHighChangeTime) and not na(htfLowChangeTime)
+htfDataValid = htfBreakoutDataValid and htfDipDataValid and htfTimingDataValid and htfBreakoutHigh > htfDipLow
+
 mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0
 isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and htfDataValid and historicalDataSufficient and contractDataValid and mathSafetyValid
 
@@ -169,45 +176,49 @@ isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDa
 // |                                E N T R Y   T R I G G E R S                                 |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// HTF-based entry system with day-based age validation
+// TRUE HTF-based entry system with proper time-based age validation
 
-// Variables to track trade timing
-var int crossAboveHTFHighTime = na
+// Variables to track current timeframe entry timing
+var int crossAboveHTFTime = na
 var int touchHTFLowTime = na
 
-// Constants for time calculations
+// Constants for time calculations  
 MILLISECONDS_PER_DAY = 86400000
 
-// Track when we first cross above HTF high
-if not na(htfHigh) and close > htfHigh and (na(crossAboveHTFHighTime) or close[1] <= htfHigh)
-    crossAboveHTFHighTime := time
+// Track when we first cross above HTF breakout high on current timeframe
+if not na(htfBreakoutHigh) and close > htfBreakoutHigh and (na(crossAboveHTFTime) or close[1] <= htfBreakoutHigh)
+    crossAboveHTFTime := time
 
-// Track when we first touch HTF low
-if not na(htfLow) and low <= (htfLow * (1 + dipTouchBuffer / 100)) and na(touchHTFLowTime)
+// Track when we first touch HTF dip low with ATR-based buffer
+htfLowWithBuffer = not na(htfDipLow) and not na(atr) ? htfDipLow + (atr * dipTouchBufferATR) : na
+if not na(htfLowWithBuffer) and low <= htfLowWithBuffer and na(touchHTFLowTime)
     touchHTFLowTime := time
 
-// Calculate ages in days using pivot formation times
-htfHighAgeDays = not na(significantHighTime) ? math.round((time - significantHighTime) / MILLISECONDS_PER_DAY) : na
-htfLowAgeDays = not na(significantLowTime) ? math.round((time - significantLowTime) / MILLISECONDS_PER_DAY) : na
-daysSinceCrossAbove = not na(crossAboveHTFHighTime) ? math.round((time - crossAboveHTFHighTime) / MILLISECONDS_PER_DAY) : na
+// Calculate ages in days using PROPER HTF timing data
+htfHighAgeDays = not na(htfHighChangeTime) ? math.round((time - htfHighChangeTime) / MILLISECONDS_PER_DAY) : na
+htfLowAgeDays = not na(htfLowChangeTime) ? math.round((time - htfLowChangeTime) / MILLISECONDS_PER_DAY) : na
+daysSinceCrossAbove = not na(crossAboveHTFTime) ? math.round((time - crossAboveHTFTime) / MILLISECONDS_PER_DAY) : na
 daysSinceTouch = not na(touchHTFLowTime) ? math.round((time - touchHTFLowTime) / MILLISECONDS_PER_DAY) : na
 
-// Breakout entry with age validation
-basicBreakoutTrigger = enableBreakoutEntry and not na(htfHigh) and close > htfHigh
+// F-2: BREAKOUT ENTRY LOGIC (HTF breakout with age and timing validation)
+basicBreakoutTrigger = enableBreakoutEntry and not na(htfBreakoutHigh) and close > htfBreakoutHigh
 ageValidBreakout = na(htfHighAgeDays) or (htfHighAgeDays >= breakoutMinAgeDays and htfHighAgeDays <= breakoutMaxAgeDays)
 crossWithinTimeframe = na(daysSinceCrossAbove) or daysSinceCrossAbove <= breakoutCrossWithinDays
 breakoutTrigger = basicBreakoutTrigger and ageValidBreakout and crossWithinTimeframe
 
-// Dip buy entry with recovery validation
-touchedHTFLow = enableDipBuyEntry and not na(htfLow) and low <= (htfLow * (1 + dipTouchBuffer / 100))
-dipRecoveryLevel = not na(htfLow) and not na(atr) ? htfLow + (atr * dipRecoveryBufferATR) : na
+// F-3: DIP BUY ENTRY LOGIC (HTF dip recovery with age and timing validation)
+touchedHTFLow = enableDipBuyEntry and not na(htfLowWithBuffer) and low <= htfLowWithBuffer
+dipRecoveryLevel = not na(htfDipLow) and not na(atr) ? htfDipLow + (atr * dipRecoveryBufferATR) : na
 dipRecoveryTrigger = touchedHTFLow and not na(dipRecoveryLevel) and close > dipRecoveryLevel
 ageValidDipBuy = na(htfLowAgeDays) or (htfLowAgeDays >= dipMinAgeDays and htfLowAgeDays <= dipMaxAgeDays)
 recoveryWithinTimeframe = na(daysSinceTouch) or daysSinceTouch <= dipRecoveryWithinDays
 dipBuyTrigger = dipRecoveryTrigger and ageValidDipBuy and recoveryWithinTimeframe
 
-// Combined entry condition: ROBUSTNESS check AND DATA validation AND TREND filter AND REFERENCE asset AND (any entry trigger)
-entryCondition = contractDataValid and isDataValid and isTrendFilterPassed and (breakoutTrigger or dipBuyTrigger)
+// PRIORITIZED ENTRY LOGIC - Avoid conflicts, breakout takes priority
+entryType = breakoutTrigger and not dipBuyTrigger ? "F2B" : dipBuyTrigger and not breakoutTrigger ? "F3D" : breakoutTrigger and dipBuyTrigger ? "F2B" : na
+
+// Combined entry condition with prioritized logic
+entryCondition = contractDataValid and isDataValid and isTrendFilterPassed and not na(entryType)
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                    R I S K   M A N A G E M E N T                             |
@@ -225,18 +236,18 @@ adjustedAtrTrailMultiplier = atrTrailMultiplier * volatilityAdjustment
 
 // @function Calculate position size based on ATR risk
 calculateUnitSize(entryPrice, stopLossPrice) =>
-    if na(entryPrice) or na(stopLossPrice) or entryPrice <= 0 or stopLossPrice <= 0 or 
-       unitRiskAmountDollars <= 0 or strategy.equity <= 0
+    if na(entryPrice) or na(stopLossPrice) or entryPrice <= 0 or stopLossPrice <= 0 or unitRiskAmountDollars <= 0 or strategy.equity <= 0
         0.0
     else
-        // Traditional position sizing (CFD/Spot style)
+        // ATR-based position sizing (no percentage fallbacks)
         riskPerShare = math.abs(entryPrice - stopLossPrice)
         if riskPerShare == 0
             0.0
         else
             unitValue = unitRiskAmountDollars / riskPerShare
-            maxUnitValue = strategy.equity * 0.95
-            validUnitValue = math.min(unitValue, maxUnitValue)
+            // Max position size based on reasonable portfolio allocation (90% equity max)
+            maxEquityRisk = strategy.equity * 0.90
+            validUnitValue = math.min(unitValue, maxEquityRisk)
             math.floor(validUnitValue)
 
 // @function Calculate ATR-based stop loss
@@ -244,8 +255,9 @@ calculateInitialStopLoss(entryPrice) =>
     if na(entryPrice) or entryPrice <= 0 or na(atr) or atr == 0
         na
     else
-        atrStopPrice = entryPrice - (atr * stopLossMultiplier)
-        math.min(atrStopPrice, entryPrice * 0.95)// ——————————————————————————————————————————————————————————————————————————————————————————————
+        entryPrice - (atr * stopLossMultiplier)
+
+// ——————————————————————————————————————————————————————————————————————————————————————————————
 // |                                    E X I T   S T R A T E G Y                                 |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
@@ -333,14 +345,13 @@ var int tradeStartBar = na
 var float tradeEntryPrice = na
 var float tradeExitPrice = na
 
-// Entry execution with monthly data validation - now robust across timeframes and assets
+// Entry execution with TRUE HTF data validation - robust across timeframes and assets
 if strategy.position_size == 0 and entryCondition and not na(atr) and atr != 0 and contractDataValid
     initialStop = calculateInitialStopLoss(close)
     if not na(initialStop) and initialStop < close
         unitSize = calculateUnitSize(close, initialStop)
         if unitSize > 0
-            entryType = breakoutTrigger ? "F2B" : dipBuyTrigger ? "F3D" : "F2B"
-            entryId = "T1-" + entryType
+            entryId = "T1-" + entryType  // Use prioritized entry type
             
             strategy.entry(entryId, strategy.long, qty=unitSize)
             currentStopPrice := initialStop
@@ -376,9 +387,8 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
         tierSize = calculateUnitSize(close, tierStopPrice)
         
         if tierSize > 0
-            entryType = breakoutTrigger ? "F2B" : dipBuyTrigger ? "F3D" : "F2B"
             tierNumber = currentTierCount + 2
-            tierId = "T" + str.tostring(tierNumber) + "-" + entryType
+            tierId = "T" + str.tostring(tierNumber) + "-" + entryType  // Use current entry type
             
             strategy.entry(tierId, strategy.long, qty=tierSize)
             currentTierCount := currentTierCount + 1
@@ -443,16 +453,6 @@ if array.size(historicalRiskZones) > MAX_ZONES
 
 // Zone management for ACTIVE trades (per UI specifications)
 if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStartBar) and not na(tradeEntryPrice) and currentStopPrice > 0
-    currentPrice = close
-    upperBound = math.max(high * 1.05, currentPrice * 1.10)
-    
-    if showProfitZone and upperBound > tradeEntryPrice and tradeStartBar <= bar_index
-        if na(currentProfitZone)
-            currentProfitZone := box.new(left=tradeStartBar, top=upperBound, right=bar_index, bottom=tradeEntryPrice, bgcolor=PROFIT_ZONE_COLOR, border_color=color.new(color.green, 50), border_width=1, extend=extend.none)
-        else
-            box.set_right(currentProfitZone, bar_index)
-            box.set_top(currentProfitZone, upperBound)
-    
     if showRiskZone and tradeEntryPrice > currentStopPrice and currentStopPrice > 0 and tradeStartBar <= bar_index
         if na(currentRiskZone)
             currentRiskZone := box.new(left=tradeStartBar, top=tradeEntryPrice, right=bar_index, bottom=currentStopPrice, bgcolor=RISK_ZONE_COLOR, border_color=color.new(color.red, 50), border_width=1, extend=extend.none)
@@ -511,7 +511,13 @@ bgcolor(showStopLevels and positionZone ? SUBTLE_GREEN : na, title="Position Sta
 
 // Performance metrics calculation (moved outside debug scope for Pine Script v6 compatibility)
 totalReturnPct = strategy.equity > 0 ? ((strategy.equity - strategy.initial_capital) / strategy.initial_capital * 100) : 0
-currentDrawdownPct = strategy.equity > 0 ? ((strategy.equity - strategy.max_equity) / strategy.max_equity * 100) : 0
+
+// Track maximum equity ourselves since strategy.max_equity doesn't exist
+var float maxEquity = 0.0
+if strategy.equity > maxEquity
+    maxEquity := strategy.equity
+
+currentDrawdownPct = strategy.equity > 0 and maxEquity > 0 ? ((strategy.equity - maxEquity) / maxEquity * 100) : 0
 
 // Annualized return calculation (fixed dynamic indexing violation)
 var int startTime = na
@@ -527,7 +533,7 @@ annualizedReturnPct = yearsInTest > 0 and equityMultiplier > 0 ? (math.pow(equit
 // Debug information table with Universal HTF details and robustness indicators
 if showDebugInfo
     // Simplified system validation
-    historySufficient = bar_index >= math.max(breakoutLookback, dipLookback)
+    historySufficient = bar_index >= math.max(breakoutLookbackPeriod, dipLookbackPeriod)
     
     debugTable = table.new(position.top_right, 2, 21, bgcolor=color.new(color.white, 80), border_width=1)
     table.cell(debugTable, 0, 0, "🛡️ JON", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
@@ -542,10 +548,10 @@ if showDebugInfo
     table.cell(debugTable, 1, 4, str.tostring(yearsInTest, "#.##") + " years", text_size=size.small)
     table.cell(debugTable, 0, 5, "⚡ Chart TF", text_size=size.small)
     table.cell(debugTable, 1, 5, timeframe.period, text_size=size.small)
-    table.cell(debugTable, 0, 6, "⚡ Breakout Lookback", text_size=size.small)
-    table.cell(debugTable, 1, 6, str.tostring(breakoutLookback) + " bars", text_size=size.small)
-    table.cell(debugTable, 0, 7, "⚡ Dip Lookback", text_size=size.small)
-    table.cell(debugTable, 1, 7, str.tostring(dipLookback) + " bars", text_size=size.small)
+    table.cell(debugTable, 0, 6, "⚡ Monthly Breakout", text_size=size.small)
+    table.cell(debugTable, 1, 6, str.tostring(breakoutLookbackPeriod) + " months", text_size=size.small)
+    table.cell(debugTable, 0, 7, "⚡ Monthly Dip", text_size=size.small)
+    table.cell(debugTable, 1, 7, str.tostring(dipLookbackPeriod) + " months", text_size=size.small)
     table.cell(debugTable, 0, 8, "⚡ History", text_size=size.small)
     table.cell(debugTable, 1, 8, str.tostring(bar_index) + " bars " + (historySufficient ? "✅" : "⚠️"), text_size=size.small)
     table.cell(debugTable, 0, 9, "Position Size", text_size=size.small)
@@ -556,13 +562,13 @@ if showDebugInfo
     table.cell(debugTable, 1, 11, not na(currentStopPrice) ? str.tostring(currentStopPrice, "##.##") : "N/A", text_size=size.small)
     table.cell(debugTable, 0, 12, "🔍 ATR (50-period)", text_size=size.small)
     table.cell(debugTable, 1, 12, not na(atr) and atr != 0 ? str.tostring(atr, "##.####") : (na(atr) ? "NA" : "ZERO"), text_size=size.small)
-    table.cell(debugTable, 0, 13, "🔍 Daily High", text_size=size.small)
-    table.cell(debugTable, 1, 13, not na(htfHigh) ? str.tostring(htfHigh, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 14, "🔍 Daily Low", text_size=size.small)
-    table.cell(debugTable, 1, 14, not na(htfLow) ? str.tostring(htfLow, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 15, "🔍 High Age", text_size=size.small)
+    table.cell(debugTable, 0, 13, "🔍 Monthly High", text_size=size.small)
+    table.cell(debugTable, 1, 13, not na(htfBreakoutHigh) ? str.tostring(htfBreakoutHigh, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 14, "🔍 Monthly Low", text_size=size.small)
+    table.cell(debugTable, 1, 14, not na(htfDipLow) ? str.tostring(htfDipLow, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 15, "🔍 Monthly High Age", text_size=size.small)
     table.cell(debugTable, 1, 15, not na(htfHighAgeDays) ? str.tostring(htfHighAgeDays) + " days" : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 16, "🔍 Low Age", text_size=size.small)
+    table.cell(debugTable, 0, 16, "🔍 Monthly Low Age", text_size=size.small)
     table.cell(debugTable, 1, 16, not na(htfLowAgeDays) ? str.tostring(htfLowAgeDays) + " days" : "N/A", text_size=size.small)
     table.cell(debugTable, 0, 17, "🔍 Reference Asset", text_size=size.small)
     table.cell(debugTable, 1, 17, useReferenceAsset and not na(referenceClose) ? str.tostring(referenceClose, "##.##") : "Disabled", text_size=size.small)
