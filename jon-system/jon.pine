@@ -513,9 +513,12 @@ bgcolor(showStopLevels and positionZone ? SUBTLE_GREEN : na, title="Position Sta
 totalReturnPct = strategy.equity > 0 ? ((strategy.equity - strategy.initial_capital) / strategy.initial_capital * 100) : 0
 currentDrawdownPct = strategy.equity > 0 ? ((strategy.equity - strategy.max_equity) / strategy.max_equity * 100) : 0
 
-// Annualized return calculation
-startTime = time[bar_index]  // First bar timestamp
-currentTime = time  // Current bar timestamp
+// Annualized return calculation (fixed dynamic indexing violation)
+var int startTime = na
+if na(startTime)
+    startTime := time
+
+currentTime = time
 daysInTest = not na(startTime) ? (currentTime - startTime) / (1000 * 60 * 60 * 24) : 1
 yearsInTest = daysInTest / 365.25
 equityMultiplier = strategy.equity > 0 and strategy.initial_capital > 0 ? strategy.equity / strategy.initial_capital : 1
@@ -527,15 +530,15 @@ if showDebugInfo
     historySufficient = bar_index >= math.max(breakoutLookback, dipLookback)
     
     debugTable = table.new(position.top_right, 2, 21, bgcolor=color.new(color.white, 80), border_width=1)
-    table.cell(debugTable, 0, 0, "🛡️ JON SIMPLIFIED", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 0, 0, "🛡️ JON", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
     table.cell(debugTable, 1, 0, "Values", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
-    table.cell(debugTable, 0, 1, "💰 Total Return %", text_size=size.small)
+    table.cell(debugTable, 0, 1, "Total Return %", text_size=size.small)
     table.cell(debugTable, 1, 1, str.tostring(totalReturnPct, "#.##") + "%", text_size=size.small)
-    table.cell(debugTable, 0, 2, "📈 Annualized %", text_size=size.small)
+    table.cell(debugTable, 0, 2, "Annualized %", text_size=size.small)
     table.cell(debugTable, 1, 2, str.tostring(annualizedReturnPct, "#.##") + "%", text_size=size.small)
-    table.cell(debugTable, 0, 3, "📉 Current DD %", text_size=size.small)
+    table.cell(debugTable, 0, 3, "Current DD %", text_size=size.small)
     table.cell(debugTable, 1, 3, str.tostring(currentDrawdownPct, "#.##") + "%", text_size=size.small)
-    table.cell(debugTable, 0, 4, "⏱️ Test Duration", text_size=size.small)
+    table.cell(debugTable, 0, 4, "Test Duration", text_size=size.small)
     table.cell(debugTable, 1, 4, str.tostring(yearsInTest, "#.##") + " years", text_size=size.small)
     table.cell(debugTable, 0, 5, "⚡ Chart TF", text_size=size.small)
     table.cell(debugTable, 1, 5, timeframe.period, text_size=size.small)
