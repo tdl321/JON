@@ -509,22 +509,22 @@ plotshape(showExitArrows and exitDetected, "Exit Arrow", shape.arrowdown, locati
 positionZone = strategy.position_size > 0
 bgcolor(showStopLevels and positionZone ? SUBTLE_GREEN : na, title="Position Status")
 
+// Performance metrics calculation (moved outside debug scope for Pine Script v6 compatibility)
+totalReturnPct = strategy.equity > 0 ? ((strategy.equity - strategy.initial_capital) / strategy.initial_capital * 100) : 0
+currentDrawdownPct = strategy.equity > 0 ? ((strategy.equity - strategy.max_equity) / strategy.max_equity * 100) : 0
+
+// Annualized return calculation
+startTime = time[bar_index]  // First bar timestamp
+currentTime = time  // Current bar timestamp
+daysInTest = not na(startTime) ? (currentTime - startTime) / (1000 * 60 * 60 * 24) : 1
+yearsInTest = daysInTest / 365.25
+equityMultiplier = strategy.equity > 0 and strategy.initial_capital > 0 ? strategy.equity / strategy.initial_capital : 1
+annualizedReturnPct = yearsInTest > 0 and equityMultiplier > 0 ? (math.pow(equityMultiplier, 1/yearsInTest) - 1) * 100 : 0
+
 // Debug information table with Universal HTF details and robustness indicators
 if showDebugInfo
     // Simplified system validation
     historySufficient = bar_index >= math.max(breakoutLookback, dipLookback)
-    
-    // Performance metrics calculation
-    totalReturnPct = strategy.equity > 0 ? ((strategy.equity - strategy.initial_capital) / strategy.initial_capital * 100) : 0
-    currentDrawdownPct = strategy.equity > 0 ? ((strategy.equity - strategy.max_equity) / strategy.max_equity * 100) : 0
-    
-    // Annualized return calculation
-    startTime = time[bar_index]  // First bar timestamp
-    currentTime = time  // Current bar timestamp
-    daysInTest = not na(startTime) ? (currentTime - startTime) / (1000 * 60 * 60 * 24) : 1
-    yearsInTest = daysInTest / 365.25
-    equityMultiplier = strategy.equity > 0 and strategy.initial_capital > 0 ? strategy.equity / strategy.initial_capital : 1
-    annualizedReturnPct = yearsInTest > 0 and equityMultiplier > 0 ? (math.pow(equityMultiplier, 1/yearsInTest) - 1) * 100 : 0
     
     debugTable = table.new(position.top_right, 2, 21, bgcolor=color.new(color.white, 80), border_width=1)
     table.cell(debugTable, 0, 0, "🛡️ JON SIMPLIFIED", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
