@@ -4,19 +4,22 @@ strategy("JON",
      shorttitle="JON",
      overlay=true,
      pyramiding=4,
-     default_qty_type=strategy.fixed,
+     default_qty_type=strategy.cash, // Changed to strategy.cash for v6
      initial_capital=100000,
      currency=currency.USD,
-     commission_type=strategy.commission.percent,
+     commission_type=strategy.commission.percent, // Corrected for v6
      commission_value=0.1)
 
+// Constants for time calculations
+MILLISECONDS_PER_DAY = 86400000
+
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                S T R A T E G Y   I N F O R M A T I O N                       |
+// |                                 S T R A T E G Y I N F O R M A T I O N                                |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // JON MTP BETA v4 Strategy - Universal Higher Timeframe Trend Following System
 //
 // STRATEGY PHILOSOPHY:
-// This strategy prioritizes ROBUSTNESS above all else. 
+// This strategy prioritizes ROBUSTNESS above all else.
 //
 // CORE REQUIREMENTS:
 // - REACTIVE ENTRIES: Accept many small losses to maximize chances of catching strong trends
@@ -42,19 +45,17 @@ strategy("JON",
 // - ALL assets: Crypto, indices, futures, metals, forex
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                  I N P U T   P A R A M E T E R S                           |
+// |                                     I N P U T P A R A M E T R S                                    |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
-
-
-// --- F-1: TREND FILTER SETTINGS ---
-trendFilterEnabled = input.bool(true, "Enable 100 EMA Trend Filter", group = "Trend Filter (F-1)")
-trendEmaLength = input.int(100, "Trend EMA Length", minval = 50, maxval = 500, group = "Trend Filter (F-1)")
-trendAtrBuffer = input.float(1.5, "Trend ATR Buffer", minval = 0.0, maxval = 3.0, step = 0.1, group = "Trend Filter (F-1)", tooltip = "Allow entries when price is within X ATR below EMA (0 = strict, 0.5 = moderate, 1.5 = aggressive)")
+// --- F-1: TREND FILTER SETTINGS (USER UPDATED) ---
+trendFilterEnabled = input.bool(true, "Enable 200 EMA Trend Filter", group = "Trend Filter (F-1)")
+trendEmaLength = input.int(200, "Trend EMA Length", minval = 50, maxval = 500, group = "Trend Filter (F-1)")
+trendAtrBuffer = input.float(1.0, "Trend ATR Buffer", minval = 0.0, maxval = 3.0, step = 0.1, group = "Trend Filter (F-1)", tooltip = "Allow entries when price is within X ATR below EMA (0 = strict, 0.5 = moderate, 1.0 = balanced)")
 useReferenceAsset = input.bool(false, "Use Reference Asset Filter", group = "Trend Filter (F-1)")
 referenceSymbol = input.symbol("CRYPTOCAP:TOTAL", "Reference Asset Symbol", group = "Trend Filter (F-1)")
 
-// --- F-2: BREAKOUT ENTRY SETTINGS (Monthly HTF System) ---
+// --- F-2: BREAKOUT ENTRY SETTINGS (USER UPDATED) ---
 enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakout Entry (F-2)")
 breakoutTimeframe = input.timeframe("1M", "Monthly Timeframe for Breakouts", group = "Breakout Entry (F-2)", tooltip = "Monthly timeframe for major breakout detection")
 breakoutLookbackPeriod = input.int(1, "Monthly Lookback Period", minval = 1, maxval = 60, group = "Breakout Entry (F-2)", tooltip = "Months to look back for significant highs (1 = 1 month)")
@@ -62,15 +63,15 @@ breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1,
 breakoutMinAgeDays = input.int(20, "Min Age of Monthly High (days)", minval = 7, maxval = 180, group = "Breakout Entry (F-2)", tooltip = "Monthly high must be at least this many days old (20 days)")
 breakoutMaxAgeDays = input.int(200, "Max Age of Monthly High (days)", minval = 30, maxval = 1095, group = "Breakout Entry (F-2)", tooltip = "Monthly high must not be older than this many days (200 days)")
 
-// --- F-3: DIP BUY ENTRY SETTINGS (Monthly HTF System) ---
+// --- F-3: DIP BUY ENTRY SETTINGS (USER UPDATED) ---
 enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy Entry (F-3)")
 dipTimeframe = input.timeframe("1M", "Monthly Timeframe for Dip Buys", group = "Dip Buy Entry (F-3)", tooltip = "Monthly timeframe for major dip detection")
 dipLookbackPeriod = input.int(1, "Monthly Lookback Period", minval = 1, maxval = 60, group = "Dip Buy Entry (F-3)", tooltip = "Months to look back for significant lows (1 = 1 month)")
-dipRecoveryWithinDays = input.int(30, "Recovery Within (days)", minval = 7, maxval = 180, group = "Dip Buy Entry (F-3)", tooltip = "Must recover from monthly low within this many days")
+dipRecoveryWithinDays = input.int(14, "Recovery Within (days)", minval = 7, maxval = 180, group = "Dip Buy Entry (F-3)", tooltip = "Must recover from monthly low within this many days")
 dipMinAgeDays = input.int(15, "Min Age of Monthly Low (days)", minval = 7, maxval = 180, group = "Dip Buy Entry (F-3)", tooltip = "Monthly low must be at least this many days old (15 days)")
 dipMaxAgeDays = input.int(90, "Max Age of Monthly Low (days)", minval = 21, maxval = 730, group = "Dip Buy Entry (F-3)", tooltip = "Monthly low must not be older than this many days (90 days)")
-dipTouchBufferATR = input.float(0.1, "Dip Touch Buffer (ATR multiplier)", minval = 0.05, maxval = 0.5, step = 0.05, group = "Dip Buy Entry (F-3)", tooltip = "Allow touching monthly low within this many ATR below the exact low")
-dipRecoveryBufferATR = input.float(0.2, "Recovery Buffer (ATR multiplier)", minval = 0.1, maxval = 1.0, step = 0.1, group = "Dip Buy Entry (F-3)", tooltip = "Must recover this many ATR above monthly low to trigger entry")
+dipTouchBufferATR = input.float(0.08, "Dip Touch Buffer (ATR multiplier)", minval = 0.02, maxval = 0.3, step = 0.01, group = "Dip Buy Entry (F-3)", tooltip = "Allow touching monthly low within this many ATR below the exact low")
+dipRecoveryBufferATR = input.float(0.25, "Recovery Buffer (ATR multiplier)", minval = 0.1, maxval = 1.0, step = 0.05, group = "Dip Buy Entry (F-3)", tooltip = "Must recover this many ATR above monthly low to trigger entry")
 
 // --- F-4: EXIT STRATEGY SETTINGS (HIGH PERFORMANCE) ---
 exitMode = input.string("ATR Trail", "Exit Strategy Mode", options = ["ATR Trail"], group = "Exit Strategy (F-4)")
@@ -80,27 +81,34 @@ trailOnTouchHigh = input.bool(true, "Trail Start on Touch High", group = "Exit S
 enableDynamicTrail = input.bool(true, "Enable Dynamic Trail Adjustment", group = "Exit Strategy (F-4)")
 volatilityLookback = input.int(14, "Volatility Reference Period", minval = 10, maxval = 50, group = "Exit Strategy (F-4)")
 
+// --- F-5: REWARD:RISK RATIO EXIT SETTINGS (USER DISABLED) ---
+enableRewardRiskExit = input.bool(false, "Enable 25:1 R:R Exit", group = "Reward:Risk Exits (F-5)")
+finalRewardRiskTarget = input.float(25.0, "R:R Target (Full Exit)", minval = 5.0, maxval = 50.0, step = 0.5, group = "Reward:Risk Exits (F-5)")
+
 // --- R-1 & R-2: RISK MANAGEMENT SETTINGS ---
 unitRiskPercent = input.float(5.0, "Risk Per Unit %", minval = 0.1, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 maxTradeRiskPercent = input.float(25.0, "Max Total Trade Risk %", minval = 1.0, maxval = 50.0, step = 0.1, group = "Risk Management (R-1, R-2)")
-atrLength = input.int(50, "ATR Length", minval = 5, maxval = 100, group = "Risk Management (R-1, R-2)")
+atrLength = input.int(100, "ATR Length", minval = 5, maxval = 200, group = "Risk Management (R-1, R-2)")
 stopLossMultiplier = input.float(5.0, "Initial Stop Loss x ATR", minval = 0.5, maxval = 10.0, step = 0.1, group = "Risk Management (R-1, R-2)")
 correlateUnit1 = input.bool(true, "Correlate Unit 1 Entry", group = "Risk Management (R-1, R-2)")
 correlateAdditionalUnits = input.bool(true, "Correlate Additional Units", group = "Risk Management (R-1, R-2)")
 correlateUnit1TrailSL = input.bool(true, "Correlate Unit 1 Trail SL", group = "Risk Management (R-1, R-2)")
 
-// --- R-4: PYRAMIDING ENGINE SETTINGS ---
+// --- R-4: PYRAMIDING ENGINE SETTINGS (AGGRESSIVE MODE) ---
 enablePyramiding = input.bool(true, "Enable Unit Pyramiding", group = "Pyramiding Engine (R-4)")
 maxPyramidEntries = input.int(4, "Max Additional Units (Total: 5)", minval = 1, maxval = 4, group = "Pyramiding Engine (R-4)")
-pyramidSpacingATR = input.float(1.0, "Unit Spacing (ATR multiplier)", minval = 0.5, maxval = 2.0, step = 0.5, group = "Pyramiding Engine (R-4)")
+pyramidSpacingATR = input.float(0.5, "Unit Spacing (ATR multiplier)", minval = 0.25, maxval = 2.0, step = 0.25, group = "Pyramiding Engine (R-4)")
 trailSLOnPyramiding = input.bool(true, "Trail SL on Unit Additions", group = "Pyramiding Engine (R-4)")
 
-// --- UI: DISPLAY SETTINGS ---
+// ===============================
+// |   UI: DISPLAY SETTINGS      |
+// ===============================
+// All UI/display-related inputs are grouped here for clarity
 showTrendEma = input.bool(true, "Show 100 EMA", group = "Display Settings")
 showStopLevels = input.bool(true, "Show Stop Loss Levels", group = "Display Settings")
 showEntryArrows = input.bool(true, "Show Entry Arrows", group = "Display Settings")
 showExitArrows = input.bool(true, "Show Exit Arrows", group = "Display Settings")
-arrowSize = "Small"
+arrowSize = "Small" // Not an input, just a constant
 showProfitZone = input.bool(false, "Show Profit Zone", group = "Display Settings")
 showRiskZone = input.bool(false, "Show Risk Zone", group = "Display Settings")
 showStopLossLine = input.bool(true, "Show Stop Loss Line", group = "Display Settings")
@@ -109,17 +117,19 @@ showHistoricalZones = input.bool(true, "Show Historical Zones", group = "Display
 zoneTransparency = input.int(85, "Zone Transparency", minval = 80, maxval = 95, group = "Display Settings")
 maxHistoricalZones = input.int(50, "Max Historical Zones", minval = 10, maxval = 100, group = "Display Settings")
 showDebugInfo = input.bool(false, "Show Debug Info", group = "Display Settings")
+
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                  C O R E   I N D I C A T O R S                             |
+// |                                 C O R E I N D I C A T O R S                                  |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // Basic indicators with EXTENDED ATR period (KEY DIFFERENCE) - using native chart data
-atr = ta.atr(atrLength)  // 50-period ATR for stability
+atr = ta.atr(atrLength)     // 100-period ATR for stability
 trendEma = ta.ema(close, trendEmaLength)
 
 // Reference asset data for correlation (KEY FEATURE) - using chart timeframe
+// FIXED: Calculate EMA using the fetched reference close data (safer than nested request.security)
 referenceClose = useReferenceAsset ? request.security(referenceSymbol, timeframe.period, close, lookahead=barmerge.lookahead_off) : na
-referenceEma = useReferenceAsset and not na(referenceClose) ? request.security(referenceSymbol, timeframe.period, ta.ema(close, trendEmaLength), lookahead=barmerge.lookahead_off) : na
+referenceEma = useReferenceAsset and not na(referenceClose) ? ta.ema(referenceClose, trendEmaLength) : na
 
 // Trend filter with ATR buffer and reference asset correlation - using native chart data
 trendFilterLevel = trendEma - (atr * trendAtrBuffer)
@@ -130,6 +140,13 @@ isTrendFilterPassed = isTrendBullish and isReferenceBullish
 // TRUE HTF DATA - Real higher timeframe breakout and dip levels
 htfBreakoutHigh = request.security(syminfo.tickerid, breakoutTimeframe, ta.highest(high, breakoutLookbackPeriod), lookahead=barmerge.lookahead_off)
 htfDipLow = request.security(syminfo.tickerid, dipTimeframe, ta.lowest(low, dipLookbackPeriod), lookahead=barmerge.lookahead_off)
+
+// Calculate HTF dip low with buffer (must be declared after F-3 inputs AND atr calculation)
+htfLowWithBuffer = not na(htfDipLow) and not na(atr) ? htfDipLow + (atr * dipTouchBufferATR) : na
+
+// Variables to track current timeframe entry timing
+var int crossAboveHTFTime = na
+var int touchHTFLowTime = na
 
 // HTF time tracking for age validation (using HTF bar index for proper timing)
 htfBreakoutTime = request.security(syminfo.tickerid, breakoutTimeframe, time, lookahead=barmerge.lookahead_off)
@@ -146,9 +163,12 @@ if not na(htfBreakoutHigh) and (na(lastHTFHigh) or htfBreakoutHigh != lastHTFHig
     lastHTFHigh := htfBreakoutHigh
     htfHighChangeTime := time
 
+// FIXED: Reset touch timing when HTF low changes
 if not na(htfDipLow) and (na(lastHTFLow) or htfDipLow != lastHTFLow)
     lastHTFLow := htfDipLow
     htfLowChangeTime := time
+    // CRITICAL FIX: Reset touch timing for new monthly low
+    touchHTFLowTime := na
 
 // Data validation constants
 contractDataValid = true
@@ -157,46 +177,38 @@ contractDataValid = true
 maxLookbackRequired = math.max(trendEmaLength, atrLength, volatilityLookback)
 historicalDataSufficient = bar_index >= maxLookbackRequired
 
-// ROBUSTNESS FIX #3: Enhanced data validation with TRUE HTF validation
+// SIMPLIFIED data validation - closer to reference version (TESTING)
 basicDataValid = not na(close) and not na(high) and not na(low) and close > 0 and high > 0 and low > 0 and high >= low and high >= close and low <= close
 atrDataValid = not na(atr) and atr > 0 and bar_index >= atrLength
 trendDataValid = not na(trendEma) and trendEma > 0 and bar_index >= trendEmaLength
 referenceDataValid = not useReferenceAsset or (not na(referenceClose) and not na(referenceEma) and referenceClose > 0)
 
-// HTF data validation - all HTF components must be valid
-htfBreakoutDataValid = not na(htfBreakoutHigh) and htfBreakoutHigh > 0 and not na(htfBreakoutTime)
-htfDipDataValid = not na(htfDipLow) and htfDipLow > 0 and not na(htfDipTime)
+// HTF data validation - RELAXED VERSION (allow partial HTF data)
+htfBreakoutDataValid = not na(htfBreakoutHigh) and htfBreakoutHigh > 0
+htfDipDataValid = not na(htfDipLow) and htfDipLow > 0  
 htfTimingDataValid = not na(htfHighChangeTime) and not na(htfLowChangeTime)
-htfDataValid = htfBreakoutDataValid and htfDipDataValid and htfTimingDataValid and htfBreakoutHigh > htfDipLow
+htfDataValid = htfBreakoutDataValid and htfDipDataValid and htfBreakoutHigh > htfDipLow
 
 mathSafetyValid = atr > 0 and close > 0 and strategy.equity > 0
-isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and htfDataValid and historicalDataSufficient and contractDataValid and mathSafetyValid
+isDataValid = basicDataValid and atrDataValid and trendDataValid and referenceDataValid and htfDataValid and mathSafetyValid
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                E N T R Y   T R I G G E R S                                 |
+// |                                 E N T R Y T R I G G E R S                                  |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // TRUE HTF-based entry system with proper time-based age validation
 
-// Variables to track current timeframe entry timing
-var int crossAboveHTFTime = na
-var int touchHTFLowTime = na
-
-// Constants for time calculations  
-MILLISECONDS_PER_DAY = 86400000
-
-// Track when we first cross above HTF breakout high on current timeframe
-if not na(htfBreakoutHigh) and close > htfBreakoutHigh and (na(crossAboveHTFTime) or close[1] <= htfBreakoutHigh)
-    crossAboveHTFTime := time
-
-// Track when we first touch HTF dip low with ATR-based buffer
-htfLowWithBuffer = not na(htfDipLow) and not na(atr) ? htfDipLow + (atr * dipTouchBufferATR) : na
-if not na(htfLowWithBuffer) and low <= htfLowWithBuffer and na(touchHTFLowTime)
-    touchHTFLowTime := time
-
 // Calculate ages in days using PROPER HTF timing data
 htfHighAgeDays = not na(htfHighChangeTime) ? math.round((time - htfHighChangeTime) / MILLISECONDS_PER_DAY) : na
 htfLowAgeDays = not na(htfLowChangeTime) ? math.round((time - htfLowChangeTime) / MILLISECONDS_PER_DAY) : na
+
+// Update crossAboveHTFTime and touchHTFLowTime
+if not na(htfBreakoutHigh) and close > htfBreakoutHigh and (na(crossAboveHTFTime) or (time - crossAboveHTFTime) / MILLISECONDS_PER_DAY > breakoutCrossWithinDays)
+    crossAboveHTFTime := time
+if not na(htfLowWithBuffer) and low <= htfLowWithBuffer and (na(touchHTFLowTime) or (time - touchHTFLowTime) / MILLISECONDS_PER_DAY > dipRecoveryWithinDays)
+    touchHTFLowTime := time
+
+
 daysSinceCrossAbove = not na(crossAboveHTFTime) ? math.round((time - crossAboveHTFTime) / MILLISECONDS_PER_DAY) : na
 daysSinceTouch = not na(touchHTFLowTime) ? math.round((time - touchHTFLowTime) / MILLISECONDS_PER_DAY) : na
 
@@ -221,7 +233,7 @@ entryType = breakoutTrigger and not dipBuyTrigger ? "F2B" : dipBuyTrigger and no
 entryCondition = contractDataValid and isDataValid and isTrendFilterPassed and not na(entryType)
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                    R I S K   M A N A G E M E N T                             |
+// |                                 R I S K M A N A G E M E N T                                  |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // Position sizing calculation
@@ -258,7 +270,7 @@ calculateInitialStopLoss(entryPrice) =>
         entryPrice - (atr * stopLossMultiplier)
 
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                                    E X I T   S T R A T E G Y                                 |
+// |                                     E X I T S T R A T E G Y                                    |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // Exit tracking variables
@@ -268,6 +280,14 @@ var float atrTrailHigh = na
 var bool trailStartActivated = false
 var float profitActivationLevel = na
 var float initialStopPrice = na
+
+// Trade tracking variables (declared in EXIT section to avoid scope issues)
+var string lastEntryType = na
+var string lastExitType = na
+var int lastEntryTier = na
+var int lastExitTier = na
+var int currentTierCount = 0
+var float lastTierPrice = na
 
 // Update exit system with TOUCH HIGH activation mode (MTP KEY FEATURE) - now using baseTF data
 if strategy.position_size > 0 and not na(atr)
@@ -320,19 +340,27 @@ else
 // Exit conditions - now using baseTF data
 stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and low <= currentStopPrice
 trendFilterFail = strategy.position_size > 0 and not isTrendFilterPassed
-// ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                             T R A D E   E X E C U T I O N                                   |
-// ——————————————————————————————————————————————————————————————————————————————————————————————
 
-// Pyramiding tracking
-var int currentTierCount = 0
-var float lastTierPrice = na
+// F-5: REWARD:RISK RATIO EXIT SYSTEM
+var float currentRewardRiskRatio = na
 
-// Entry/Exit type tracking for UI labels
-var string lastEntryType = na
-var string lastExitType = na
-var int lastEntryTier = na
-var int lastExitTier = na
+// Calculate current reward:risk ratio
+rewardRiskExitHit = false
+if enableRewardRiskExit and strategy.position_size > 0 and not na(currentStopPrice) and currentStopPrice > 0
+    entryPrice = strategy.position_avg_price
+    currentRisk = entryPrice - currentStopPrice
+    currentReward = close - entryPrice
+    currentRewardRiskRatio := currentRisk > 0 ? currentReward / currentRisk : 0
+    
+    // 25:1 R:R Target - Full Exit
+    if currentRewardRiskRatio >= finalRewardRiskTarget
+        rewardRiskExitHit := true
+        lastExitType := "F5R"
+        lastExitTier := currentTierCount + 1
+
+// ——————————————————————————————————————————————————————————————————————————————————————————————
+// |                               T R A D E E X E C U T I O N                                  |
+// ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // Historical zone tracking
 var array<box> historicalProfitZones = array.new<box>()
@@ -351,7 +379,7 @@ if strategy.position_size == 0 and entryCondition and not na(atr) and atr != 0 a
     if not na(initialStop) and initialStop < close
         unitSize = calculateUnitSize(close, initialStop)
         if unitSize > 0
-            entryId = "T1-" + entryType  // Use prioritized entry type
+            entryId = "T1-" + entryType   // Use prioritized entry type
             
             strategy.entry(entryId, strategy.long, qty=unitSize)
             currentStopPrice := initialStop
@@ -364,7 +392,9 @@ if strategy.position_size == 0 and entryCondition and not na(atr) and atr != 0 a
 // Initialize trade tracking for zones
 if strategy.position_size > 0 and strategy.position_size[1] == 0
     tradeStartBar := bar_index
-    tradeEntryPrice := strategy.position_avg_price// Pyramiding execution with correlation logic - now timeframe-robust
+    tradeEntryPrice := strategy.position_avg_price
+
+// Pyramiding execution with correlation logic - now timeframe-robust
 if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr != 0
     entryPrice = strategy.position_avg_price
     profitInN = atr != 0 ? (close - entryPrice) / atr : 0.0
@@ -388,7 +418,7 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
         
         if tierSize > 0
             tierNumber = currentTierCount + 2
-            tierId = "T" + str.tostring(tierNumber) + "-" + entryType  // Use current entry type
+            tierId = "T" + str.tostring(tierNumber) + "-" + entryType   // Use current entry type
             
             strategy.entry(tierId, strategy.long, qty=tierSize)
             currentTierCount := currentTierCount + 1
@@ -408,7 +438,10 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
                 currentStopPrice := math.max(currentStopPrice, atrTrailStop)
 
 // Exit execution
-if stopLossHit
+if rewardRiskExitHit
+    exitComment = "T" + str.tostring(lastExitTier) + "-F5R"
+    strategy.close_all(comment=exitComment)
+else if stopLossHit
     lastExitType := "F4E"
     lastExitTier := currentTierCount + 1
     exitComment = "T" + str.tostring(lastExitTier) + "-F4E"
@@ -423,13 +456,14 @@ else if trendFilterFail
 if strategy.position_size == 0
     currentTierCount := 0
     lastTierPrice := na
+    currentRewardRiskRatio := na
     if strategy.position_size[1] > 0
         lastEntryType := na
         lastEntryTier := na
         lastExitType := na
         lastExitTier := na
 // ——————————————————————————————————————————————————————————————————————————————————————————————
-// |                H I S T O R I C A L   Z O N E   M A N A G E M E N T                          |
+// |                             H I S T O R I C A L Z O N E M A N A G E M E N T                              |
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 
 // Zone colors with user-configurable transparency
@@ -459,6 +493,15 @@ if strategy.position_size > 0 and not na(currentStopPrice) and not na(tradeStart
         else
             box.set_right(currentRiskZone, bar_index)
             box.set_bottom(currentRiskZone, currentStopPrice)
+    
+    // Add logic for currentProfitZone as well
+    if showProfitZone and tradeEntryPrice < close and not na(tradeStartBar) and tradeStartBar <= bar_index
+        if na(currentProfitZone)
+            currentProfitZone := box.new(left=tradeStartBar, top=close, right=bar_index, bottom=tradeEntryPrice, bgcolor=PROFIT_ZONE_COLOR, border_color=color.new(color.green, 50), border_width=1, extend=extend.none)
+        else
+            box.set_right(currentProfitZone, bar_index)
+            box.set_top(currentProfitZone, close)
+
 
 // Handle trade EXIT - finalize zones and preserve them historically
 if strategy.position_size == 0 and strategy.position_size[1] > 0
@@ -535,9 +578,21 @@ if showDebugInfo
     // Simplified system validation
     historySufficient = bar_index >= math.max(breakoutLookbackPeriod, dipLookbackPeriod)
     
-    debugTable = table.new(position.top_right, 2, 21, bgcolor=color.new(color.white, 80), border_width=1)
-    table.cell(debugTable, 0, 0, "🛡️ JON", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
+    // Calculate pyramiding debug values for display
+    debugProfitInN = strategy.position_size > 0 and not na(atr) and atr != 0 ? (close - strategy.position_avg_price) / atr : 0.0
+    debugNextTierThreshold = (currentTierCount + 1) * pyramidSpacingATR
+    debugAtrThresholdMet = debugProfitInN >= debugNextTierThreshold
+    debugPriceDistanceOk = na(lastTierPrice) or math.abs(close - lastTierPrice) >= (atr * pyramidSpacingATR)
+    debugCurrentTradeRisk = strategy.equity > 0 and strategy.position_size > 0 ? (strategy.position_size * math.abs(strategy.position_avg_price - currentStopPrice) / strategy.equity * 100) : 0.0
+    debugWouldExceedMaxRisk = debugCurrentTradeRisk + unitRiskPercent > maxTradeRiskPercent
+    debugPyramidCondition = debugAtrThresholdMet and debugPriceDistanceOk
+    debugFinalCondition = enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyramidEntries and not na(atr) and atr != 0 and debugPyramidCondition and not debugWouldExceedMaxRisk
+    
+    debugTable = table.new(position.top_right, 2, 42, bgcolor=color.new(color.white, 80), border_width=1)
+    table.cell(debugTable, 0, 0, "🛡️ JON DEBUG", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
     table.cell(debugTable, 1, 0, "Values", bgcolor=color.new(color.blue, 70), text_color=color.white, text_size=size.small)
+    
+    // Performance metrics
     table.cell(debugTable, 0, 1, "Total Return %", text_size=size.small)
     table.cell(debugTable, 1, 1, str.tostring(totalReturnPct, "#.##") + "%", text_size=size.small)
     table.cell(debugTable, 0, 2, "Annualized %", text_size=size.small)
@@ -546,38 +601,91 @@ if showDebugInfo
     table.cell(debugTable, 1, 3, str.tostring(currentDrawdownPct, "#.##") + "%", text_size=size.small)
     table.cell(debugTable, 0, 4, "Test Duration", text_size=size.small)
     table.cell(debugTable, 1, 4, str.tostring(yearsInTest, "#.##") + " years", text_size=size.small)
-    table.cell(debugTable, 0, 5, "⚡ Chart TF", text_size=size.small)
-    table.cell(debugTable, 1, 5, timeframe.period, text_size=size.small)
-    table.cell(debugTable, 0, 6, "⚡ Monthly Breakout", text_size=size.small)
-    table.cell(debugTable, 1, 6, str.tostring(breakoutLookbackPeriod) + " months", text_size=size.small)
-    table.cell(debugTable, 0, 7, "⚡ Monthly Dip", text_size=size.small)
-    table.cell(debugTable, 1, 7, str.tostring(dipLookbackPeriod) + " months", text_size=size.small)
-    table.cell(debugTable, 0, 8, "⚡ History", text_size=size.small)
-    table.cell(debugTable, 1, 8, str.tostring(bar_index) + " bars " + (historySufficient ? "✅" : "⚠️"), text_size=size.small)
-    table.cell(debugTable, 0, 9, "Position Size", text_size=size.small)
-    table.cell(debugTable, 1, 9, str.tostring(strategy.position_size, "##.##"), text_size=size.small)
-    table.cell(debugTable, 0, 10, "Entry Price", text_size=size.small)
-    table.cell(debugTable, 1, 10, not na(tradeEntryPrice) ? str.tostring(tradeEntryPrice, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 11, "Current Stop", text_size=size.small)
-    table.cell(debugTable, 1, 11, not na(currentStopPrice) ? str.tostring(currentStopPrice, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 12, "🔍 ATR (50-period)", text_size=size.small)
-    table.cell(debugTable, 1, 12, not na(atr) and atr != 0 ? str.tostring(atr, "##.####") : (na(atr) ? "NA" : "ZERO"), text_size=size.small)
-    table.cell(debugTable, 0, 13, "🔍 Monthly High", text_size=size.small)
-    table.cell(debugTable, 1, 13, not na(htfBreakoutHigh) ? str.tostring(htfBreakoutHigh, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 14, "🔍 Monthly Low", text_size=size.small)
-    table.cell(debugTable, 1, 14, not na(htfDipLow) ? str.tostring(htfDipLow, "##.##") : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 15, "🔍 Monthly High Age", text_size=size.small)
-    table.cell(debugTable, 1, 15, not na(htfHighAgeDays) ? str.tostring(htfHighAgeDays) + " days" : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 16, "🔍 Monthly Low Age", text_size=size.small)
-    table.cell(debugTable, 1, 16, not na(htfLowAgeDays) ? str.tostring(htfLowAgeDays) + " days" : "N/A", text_size=size.small)
-    table.cell(debugTable, 0, 17, "🔍 Reference Asset", text_size=size.small)
-    table.cell(debugTable, 1, 17, useReferenceAsset and not na(referenceClose) ? str.tostring(referenceClose, "##.##") : "Disabled", text_size=size.small)
-    table.cell(debugTable, 0, 18, "🔍 Trail Distance", text_size=size.small)
-    table.cell(debugTable, 1, 18, str.tostring(adjustedAtrTrailMultiplier, "#.#") + " ATR", text_size=size.small)
-    table.cell(debugTable, 0, 19, "Trail Activated", text_size=size.small)
-    table.cell(debugTable, 1, 19, trailStartActivated ? "YES" : "NO", text_size=size.small)
-    table.cell(debugTable, 0, 20, "Data Valid", text_size=size.small)
-    table.cell(debugTable, 1, 20, isDataValid ? "✅" : "⚠️", text_size=size.small)
+    
+    // ---- PYRAMIDING DEBUG SECTION ----
+    table.cell(debugTable, 0, 5, "🔥 PYRAMID DEBUG", bgcolor=color.new(color.orange, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 1, 5, "Status", bgcolor=color.new(color.orange, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 0, 6, "Current Tier Count", text_size=size.small)
+    table.cell(debugTable, 1, 6, str.tostring(currentTierCount) + "/" + str.tostring(maxPyramidEntries), text_size=size.small)
+    table.cell(debugTable, 0, 7, "Profit in ATR", text_size=size.small)
+    table.cell(debugTable, 1, 7, str.tostring(debugProfitInN, "#.##") + " ATR", text_size=size.small)
+    table.cell(debugTable, 0, 8, "Next Tier Threshold", text_size=size.small)
+    table.cell(debugTable, 1, 8, str.tostring(debugNextTierThreshold, "#.##") + " ATR", text_size=size.small)
+    table.cell(debugTable, 0, 9, "ATR Threshold Met?", text_size=size.small)
+    table.cell(debugTable, 1, 9, debugAtrThresholdMet ? "✅ YES" : "❌ NO", text_size=size.small)
+    table.cell(debugTable, 0, 10, "Price Distance OK?", text_size=size.small)
+    table.cell(debugTable, 1, 10, debugPriceDistanceOk ? "✅ YES" : "❌ NO", text_size=size.small)
+    table.cell(debugTable, 0, 11, "Last Tier Price", text_size=size.small)
+    table.cell(debugTable, 1, 11, not na(lastTierPrice) ? str.tostring(lastTierPrice, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 12, "Current Trade Risk %", text_size=size.small)
+    table.cell(debugTable, 1, 12, str.tostring(debugCurrentTradeRisk, "#.##") + "%", text_size=size.small)
+    table.cell(debugTable, 0, 13, "Would Exceed Max Risk?", text_size=size.small)
+    table.cell(debugTable, 1, 13, debugWouldExceedMaxRisk ? "🚫 YES" : "✅ NO", text_size=size.small)
+    table.cell(debugTable, 0, 14, "Final Pyramid OK?", text_size=size.small)
+    table.cell(debugTable, 1, 14, debugFinalCondition ? "🚀 YES" : "❌ NO", text_size=size.small)
+    
+    // System data
+    table.cell(debugTable, 0, 15, "⚡ Chart TF", text_size=size.small)
+    table.cell(debugTable, 1, 15, timeframe.period, text_size=size.small)
+    table.cell(debugTable, 0, 16, "⚡ Monthly Breakout", text_size=size.small)
+    table.cell(debugTable, 1, 16, str.tostring(breakoutLookbackPeriod) + " months", text_size=size.small)
+    table.cell(debugTable, 0, 17, "⚡ Monthly Dip", text_size=size.small)
+    table.cell(debugTable, 1, 17, str.tostring(dipLookbackPeriod) + " months", text_size=size.small)
+    table.cell(debugTable, 0, 18, "⚡ History", text_size=size.small)
+    table.cell(debugTable, 1, 18, str.tostring(bar_index) + " bars " + (historySufficient ? "✅" : "⚠️"), text_size=size.small)
+    
+    // Position info
+    table.cell(debugTable, 0, 19, "Position Size", text_size=size.small)
+    table.cell(debugTable, 1, 19, str.tostring(strategy.position_size, "##.##"), text_size=size.small)
+    table.cell(debugTable, 0, 20, "Entry Price", text_size=size.small)
+    table.cell(debugTable, 1, 20, not na(tradeEntryPrice) ? str.tostring(tradeEntryPrice, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 21, "Current Stop", text_size=size.small)
+    table.cell(debugTable, 1, 21, not na(currentStopPrice) ? str.tostring(currentStopPrice, "##.##") : "N/A", text_size=size.small)
+    
+    // ---- BALANCED WIN RATE INDICATORS ----
+    table.cell(debugTable, 0, 22, "🎯 BALANCED FILTERS", bgcolor=color.new(color.purple, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 1, 22, "Status", bgcolor=color.new(color.purple, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 0, 23, "Trend Filter Passed?", text_size=size.small)
+    table.cell(debugTable, 1, 23, isTrendFilterPassed ? "✅ YES" : "❌ NO", text_size=size.small)
+    table.cell(debugTable, 0, 24, "Reference Asset Bull?", text_size=size.small)
+    table.cell(debugTable, 1, 24, isReferenceBullish ? "✅ YES" : "❌ NO", text_size=size.small)
+    table.cell(debugTable, 0, 25, "Breakout Age Valid?", text_size=size.small)
+    table.cell(debugTable, 1, 25, ageValidBreakout ? "✅ YES" : "❌ NO", text_size=size.small)
+    table.cell(debugTable, 0, 26, "Dip Age Valid?", text_size=size.small)
+    table.cell(debugTable, 1, 26, ageValidDipBuy ? "✅ YES" : "❌ NO", text_size=size.small)
+    table.cell(debugTable, 0, 27, "Entry Type Ready?", text_size=size.small)
+    table.cell(debugTable, 1, 27, not na(entryType) ? entryType : "NONE", text_size=size.small)
+    
+    table.cell(debugTable, 0, 28, "🔍 ATR (100-period)", text_size=size.small)
+    table.cell(debugTable, 1, 28, not na(atr) and atr != 0 ? str.tostring(atr, "##.####") : (na(atr) ? "NA" : "ZERO"), text_size=size.small)
+    table.cell(debugTable, 0, 29, "🔍 Monthly High", text_size=size.small)
+    table.cell(debugTable, 1, 29, not na(htfBreakoutHigh) ? str.tostring(htfBreakoutHigh, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 30, "🔍 Monthly Low", text_size=size.small)
+    table.cell(debugTable, 1, 30, not na(htfDipLow) ? str.tostring(htfDipLow, "##.##") : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 31, "🔍 Monthly High Age", text_size=size.small)
+    table.cell(debugTable, 1, 31, not na(htfHighAgeDays) ? str.tostring(htfHighAgeDays) + " days" : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 32, "🔍 Monthly Low Age", text_size=size.small)
+    table.cell(debugTable, 1, 32, not na(htfLowAgeDays) ? str.tostring(htfLowAgeDays) + " days" : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 33, "🔍 Reference Asset", text_size=size.small)
+    table.cell(debugTable, 1, 33, useReferenceAsset and not na(referenceClose) ? str.tostring(referenceClose, "##.##") : "Disabled", text_size=size.small)
+    table.cell(debugTable, 0, 34, "🔍 Reference EMA", text_size=size.small)
+    table.cell(debugTable, 1, 34, useReferenceAsset and not na(referenceEma) ? str.tostring(referenceEma, "##.##") : "Disabled", text_size=size.small)
+    table.cell(debugTable, 0, 35, "🔍 Trail Distance", text_size=size.small)
+    table.cell(debugTable, 1, 35, str.tostring(adjustedAtrTrailMultiplier, "#.#") + " ATR", text_size=size.small)
+    table.cell(debugTable, 0, 36, "Trail Activated", text_size=size.small)
+    table.cell(debugTable, 1, 36, trailStartActivated ? "YES" : "NO", text_size=size.small)
+    table.cell(debugTable, 0, 37, "Current R:R Ratio", text_size=size.small)
+    table.cell(debugTable, 1, 37, not na(currentRewardRiskRatio) ? str.tostring(currentRewardRiskRatio, "#.#") + ":1" : "N/A", text_size=size.small)
+    
+    // ---- DIP BUY DEBUG SECTION (FIXED) ----
+    table.cell(debugTable, 0, 38, "🔧 DIP BUY DEBUG", bgcolor=color.new(color.orange, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 1, 38, "Status", bgcolor=color.new(color.orange, 70), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 0, 39, "Days Since Touch", text_size=size.small)
+    table.cell(debugTable, 1, 39, not na(daysSinceTouch) ? str.tostring(daysSinceTouch) + " days" : "N/A", text_size=size.small)
+    table.cell(debugTable, 0, 40, "Recovery Within OK?", text_size=size.small)
+    table.cell(debugTable, 1, 40, recoveryWithinTimeframe ? "✅ YES" : "❌ NO", text_size=size.small)
+    table.cell(debugTable, 0, 41, "Dip Recovery Trigger?", text_size=size.small)
+    table.cell(debugTable, 1, 41, dipRecoveryTrigger ? "✅ YES" : "❌ NO", text_size=size.small)
 
 // Plot Trailing Stop as a moving line that updates each bar
 plot(strategy.position_size > 0 and not na(currentStopPrice) ? currentStopPrice : na, title="Trailing Stop", color=color.red, linewidth=2, style=plot.style_line)
