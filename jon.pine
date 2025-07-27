@@ -8,22 +8,21 @@ trendSmaLength = input.int(200, "Trend SMA Length", minval = 50, maxval = 500, g
 // === BREAKOUT ENTRY ===
 enableBreakoutEntry = input.bool(true, "Enable Breakout Entry", group = "Breakout Entry")
 breakoutLookbackPeriod = input.int(30, "Breakout Lookback Period (bars)", minval = 10, maxval = 200, group = "Breakout Entry")
-breakoutMinAgeDays = input.int(20, "Min Age of High (days)", minval = 1, maxval = 180, group = "Breakout Entry")
+breakoutMinAgeDays = input.int(5, "Min Age of High (days)", minval = 1, maxval = 180, group = "Breakout Entry")
 breakoutMaxAgeDays = input.int(200, "Max Age of High (days)", minval = 30, maxval = 1095, group = "Breakout Entry")
-breakoutCrossWithinDays = input.int(20, "Cross Above Within (days)", minval = 1, maxval = 60, group = "Breakout Entry")
 
 // === DIP BUY ENTRY ===
 enableDipBuyEntry = input.bool(true, "Enable Dip Buy Entry", group = "Dip Buy Entry")
 dipLookbackPeriod = input.int(30, "Dip Lookback Period (bars)", minval = 10, maxval = 200, group = "Dip Buy Entry")
-dipRecoveryWithinDays = input.int(30, "Recovery Within (days)", minval = 7, maxval = 180, group = "Dip Buy Entry")
-dipMinAgeDays = input.int(15, "Min Age of Low (days)", minval = 1, maxval = 180, group = "Dip Buy Entry")
+dipRecoveryWithinDays = input.int(14, "Recovery Within (days)", minval = 7, maxval = 180, group = "Dip Buy Entry")
+dipMinAgeDays = input.int(3, "Min Age of Low (days)", minval = 1, maxval = 180, group = "Dip Buy Entry")
 dipMaxAgeDays = input.int(90, "Max Age of Low (days)", minval = 21, maxval = 730, group = "Dip Buy Entry")
 dipRecoveryBufferATR = input.float(0.4, "Recovery Buffer (ATR)", minval = 0.1, maxval = 1.0, step = 0.05, group = "Dip Buy Entry")
 
 // === EXIT STRATEGY ===
-initialStopMultiplier = input.float(5.0, "Initial Stop Distance x ATR", minval = 0.5, maxval = 25.0, step = 0.5, group = "Exit Strategy")
-trailingStopMultiplier = input.float(25.0, "Trailing Stop Distance x ATR", minval = 0.5, maxval = 50.0, step = 0.5, group = "Exit Strategy")
-profitThresholdATR = input.float(5.0, "Profit Threshold for Trailing", minval = 1.0, maxval = 20.0, step = 0.1, group = "Exit Strategy")
+initialStopMultiplier = input.float(10.0, "Initial Stop Distance x ATR", minval = 0.5, maxval = 25.0, step = 0.5, group = "Exit Strategy")
+dynamicStopMultiplier = input.float(5.0, "Dynamic Stop Distance x ATR", minval = 0.5, maxval = 15.0, step = 0.5, group = "Exit Strategy")
+profitThresholdATR = input.float(5.0, "Profit Threshold for Dynamic Stop", minval = 1.0, maxval = 20.0, step = 0.1, group = "Exit Strategy")
 
 // === RISK MANAGEMENT ===
 atrLength = input.int(100, "ATR Length", minval = 5, maxval = 200, group = "Risk Management")
@@ -43,8 +42,10 @@ trendSma = ta.sma(close, trendSmaLength)
 
 // === FILTERS ===
 isTrendBullish = not trendFilterEnabled or close > trendSma
+isTrendFilterPassed = isTrendBullish
 
 // === CURRENT TIMEFRAME DATA ===
+// Use confirmed data to avoid repainting
 breakoutHigh = ta.highest(high[1], breakoutLookbackPeriod)
 dipLow = ta.lowest(low[1], dipLookbackPeriod)
 
@@ -54,9 +55,8 @@ var float lastLow = na
 var int highChangeTime = na
 var int lowChangeTime = na
 var int touchLowTime = na
-var int crossHighTime = na
 
-// Track level changes
+// Track level changes using confirmed data
 if not na(breakoutHigh) and (na(lastHigh) or breakoutHigh != lastHigh)
     lastHigh := breakoutHigh
     highChangeTime := time[1]
@@ -66,27 +66,22 @@ if not na(dipLow) and (na(lastLow) or dipLow != lastLow)
     lowChangeTime := time[1]
     touchLowTime := na
 
-// Track timing events
+// Update dip touch timing
 if not na(dipLow) and low[1] <= dipLow and (na(touchLowTime) or (time - touchLowTime) / 86400000 > dipRecoveryWithinDays)
     touchLowTime := time[1]
 
-if not na(breakoutHigh) and close > breakoutHigh and (na(crossHighTime) or (time - crossHighTime) / 86400000 > breakoutCrossWithinDays)
-    crossHighTime := time
-
 // === ENTRY TRIGGERS ===
-// Age validation
+// Age validation using confirmed data
 highAgeDays = not na(highChangeTime) ? math.round((time - highChangeTime) / 86400000) : na
 lowAgeDays = not na(lowChangeTime) ? math.round((time - lowChangeTime) / 86400000) : na
 daysSinceTouch = not na(touchLowTime) ? math.round((time - touchLowTime) / 86400000) : na
-daysSinceCross = not na(crossHighTime) ? math.round((time - crossHighTime) / 86400000) : na
 
-// Breakout entry with timing window
+// Breakout entry - simplified
 basicBreakoutTrigger = enableBreakoutEntry and not na(breakoutHigh) and close > breakoutHigh
 ageValidBreakout = na(highAgeDays) or (highAgeDays >= breakoutMinAgeDays and highAgeDays <= breakoutMaxAgeDays)
-crossWithinTimeframe = na(daysSinceCross) or daysSinceCross <= breakoutCrossWithinDays
-breakoutTrigger = basicBreakoutTrigger and ageValidBreakout and crossWithinTimeframe
+breakoutTrigger = basicBreakoutTrigger and ageValidBreakout
 
-// Dip buy entry with timing window
+// Dip buy entry - no ATR buffer
 touchedLow = enableDipBuyEntry and not na(dipLow) and low <= dipLow
 dipRecoveryLevel = not na(dipLow) and not na(atr) ? dipLow + (atr * dipRecoveryBufferATR) : na
 dipRecoveryTrigger = touchedLow and not na(dipRecoveryLevel) and close > dipRecoveryLevel
@@ -94,11 +89,12 @@ ageValidDipBuy = na(lowAgeDays) or (lowAgeDays >= dipMinAgeDays and lowAgeDays <
 recoveryWithinTimeframe = na(daysSinceTouch) or daysSinceTouch <= dipRecoveryWithinDays
 dipBuyTrigger = dipRecoveryTrigger and ageValidDipBuy and recoveryWithinTimeframe
 
-// Combined entry
-entryCondition = isTrendBullish and (breakoutTrigger or dipBuyTrigger) and not na(atr) and atr > 0
+// Combined entry - no priority needed
+entryCondition = isTrendFilterPassed and (breakoutTrigger or dipBuyTrigger) and not na(atr) and atr > 0
 entryType = breakoutTrigger ? "BO" : dipBuyTrigger ? "DIP" : na
 
 // === POSITION SIZING ===
+// Simple: 65% equity per position
 calculatePositionSize() =>
     equity = strategy.equity
     positionValue = equity * 0.65
@@ -106,53 +102,54 @@ calculatePositionSize() =>
 
 // === EXIT MANAGEMENT ===
 var float currentStopPrice = na
-var float trailingStop = na
+var float dynamicTrailStop = na
 var float trailHigh = na
-var bool trailingActivated = false
+var bool dynamicTrailActivated = false
 var int currentTierCount = 0
 var float lastTierPrice = na
 
+// Calculate initial stop loss
 calculateInitialStopLoss(entryPrice) =>
     if na(entryPrice) or entryPrice <= 0 or na(atr) or atr == 0
         na
     else
         entryPrice - (atr * initialStopMultiplier)
 
-// MTP-style stop system: 5 ATR initial, 25 ATR trailing
+// Update dynamic stop system
 if strategy.position_size > 0 and not na(atr)
     entryPrice = strategy.position_avg_price
     currentProfit = close - entryPrice
     profitInATR = atr != 0 ? currentProfit / atr : 0.0
     
-    // Activate trailing when profit threshold reached
-    if not trailingActivated and profitInATR >= profitThresholdATR
-        trailingActivated := true
+    // Activate dynamic trailing when 5 ATR in profit
+    if not dynamicTrailActivated and profitInATR >= profitThresholdATR
+        dynamicTrailActivated := true
         trailHigh := high
-        trailingStop := trailHigh - (atr * trailingStopMultiplier)
-        currentStopPrice := math.max(currentStopPrice, trailingStop)
+        dynamicTrailStop := trailHigh - (atr * dynamicStopMultiplier)
+        currentStopPrice := math.max(currentStopPrice, dynamicTrailStop)
     
-    // Update trailing stop with 25 ATR distance
-    if trailingActivated
+    // Update dynamic trailing stop (5 ATR instead of 10 ATR)
+    if dynamicTrailActivated
         if high > trailHigh
             trailHigh := high
         
-        newTrailStop = trailHigh - (atr * trailingStopMultiplier)
+        newTrailStop = trailHigh - (atr * dynamicStopMultiplier)
         
-        if na(trailingStop)
-            trailingStop := newTrailStop
+        if na(dynamicTrailStop)
+            dynamicTrailStop := newTrailStop
         else
-            trailingStop := math.max(trailingStop, newTrailStop)
+            dynamicTrailStop := math.max(dynamicTrailStop, newTrailStop)
         
-        currentStopPrice := math.max(currentStopPrice, trailingStop)
+        currentStopPrice := math.max(currentStopPrice, dynamicTrailStop)
 else
     currentStopPrice := na
-    trailingStop := na
+    dynamicTrailStop := na
     trailHigh := na
-    trailingActivated := false
+    dynamicTrailActivated := false
 
 // Exit conditions
 stopLossHit = strategy.position_size > 0 and not na(currentStopPrice) and low <= currentStopPrice
-trendFilterFail = strategy.position_size > 0 and not isTrendBullish
+trendFilterFail = strategy.position_size > 0 and not isTrendFilterPassed
 
 // === TRADE EXECUTION ===
 // Entry
@@ -175,8 +172,9 @@ if enablePyramiding and strategy.position_size > 0 and currentTierCount < maxPyr
     
     atrThresholdMet = profitInN >= nextTierThreshold
     priceDistanceOk = na(lastTierPrice) or math.abs(close - lastTierPrice) >= (atr * pyramidSpacingATR)
+    pyramidCondition = atrThresholdMet and priceDistanceOk
     
-    if atrThresholdMet and priceDistanceOk
+    if pyramidCondition
         tierStopPrice = calculateInitialStopLoss(close)
         tierStopPrice := math.max(tierStopPrice, currentStopPrice)
         tierSize = calculatePositionSize()
@@ -200,13 +198,13 @@ if strategy.position_size == 0
     currentTierCount := 0
     lastTierPrice := na
     currentStopPrice := na
-    trailingStop := na
+    dynamicTrailStop := na
     trailHigh := na
-    trailingActivated := false
+    dynamicTrailActivated := false
 
 // === VISUALS ===
 plot(showTrendSma ? trendSma : na, "200 SMA", color=color.new(color.blue, 20), linewidth=1)
 plot(strategy.position_size > 0 and not na(currentStopPrice) and showStopLevels ? currentStopPrice : na, "Stop Loss", color=color.red, linewidth=2)
 plotshape(strategy.position_size > 0 and strategy.position_size[1] == 0, "Entry", shape.arrowup, location.belowbar, color.blue, size=size.small)
 plotshape(strategy.position_size == 0 and strategy.position_size[1] > 0, "Exit", shape.arrowdown, location.abovebar, color.orange, size=size.small)
-bgcolor(strategy.position_size > 0 ? color.new(color.green, 97) : na, title="Position") 
+bgcolor(strategy.position_size > 0 ? color.new(color.green, 97) : na, title="Position")
